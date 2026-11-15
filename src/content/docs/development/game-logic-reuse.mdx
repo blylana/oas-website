@@ -16,29 +16,29 @@ title: '游戏逻辑复用'
 
   判断 image 是否出现在画面中
 
-  ```python
-  interval: float =None  # 按钮出现间隔。按钮出现后的若干秒内，对这个按钮的识别返回 False。一般设置 1 或 2 秒，能避免连击。
-  threshold: float =None  # 匹配的阈值 一般不填
-  ```
+```python
+interval: float =None  # 按钮出现间隔。按钮出现后的若干秒内，对这个按钮的识别返回 False。一般设置 1 或 2 秒，能避免连击。
+threshold: float =None  # 匹配的阈值 一般不填
+```
 
 - **self.appear_then_click()**
 
 	判断 button 是否出现在画面中，出现了就点击
 
-	```python
-	target: RuleImage  # 
-	action: Union[RuleClick, RuleLongClick]=None  # 如果点击，则按照输入的对象来进行点击
-	interval: float=None  # 间隔
-	threshold: float=None  # 阈值
-	duration: float=None  # 如果是长按，可以输入长按的时间
-	```
+```python
+target: RuleImage  # 
+action: Union[RuleClick, RuleLongClick]=None  # 如果点击，则按照输入的对象来进行点击
+interval: float=None  # 间隔
+threshold: float=None  # 阈值
+duration: float=None  # 如果是长按，可以输入长按的时间
+```
  
 - **self.appear_multi_scale()**
 - **self.appear_then_click_multi_scale()**
     
     同上，但是添加了参数，支持多尺度模板匹配，适用于大小会变的元素
 
-    ```python
+```python
    # scale_range: 缩放范围 (start, end, step)，step不填默认0.1
    self.appear_then_click_multi_scale(self.I_SHI_GROWN, scale_range=(0.8, 1.2))
    # scales: 自定义缩放列表
@@ -52,19 +52,19 @@ title: '游戏逻辑复用'
 
 	较少使用
 
-	```python
-	target: RuleImage  # 
-	skip_first_screenshot=False # 是否跳过第一次截图
-	```
+```python
+target: RuleImage  # 
+skip_first_screenshot=False # 是否跳过第一次截图
+```
 
 - **self.wait_until_appear_then_click()**
 
 	较少使用
 
-	```python
-	target: RuleImage
-	action: Union[RuleClick, RuleLongClick]=None
-	```
+```python
+target: RuleImage
+action: Union[RuleClick, RuleLongClick]=None
+```
 
 - **self.wait_until_disappear()**
 
@@ -74,19 +74,19 @@ title: '游戏逻辑复用'
 
 	无反馈滑动
 
-	```python
-	swipe: RuleSwipe
-	interval: float =None  # 默认不使用
-	```
+```python
+swipe: RuleSwipe
+interval: float =None  # 默认不使用
+```
 
 - **self.click()**
 
 	无反馈点击
 
-	```python
-	click: Union[RuleClick, RuleLongClick]=None
-	interval: float =None
-	```
+```python
+click: Union[RuleClick, RuleLongClick]=None
+interval: float =None
+```
 
 - **self.ocr_appear()**
 
@@ -94,21 +94,21 @@ title: '游戏逻辑复用'
          
 	但是没有指定keyword，返回的是匹配到的值，具体取决于target的mode
 
-	```python
-	target: RuleOcr 
-	interval: float=None
-	```
+```python
+target: RuleOcr 
+interval: float=None
+```
 
 - **self.ocr_appear_click() -> bool**
 
 	ocr识别目标，如果目标存在，则触发动作
 
-	```python
-	target: RuleOcr
-	action: Union[RuleClick, RuleLongClick]=None
-	interval: float=None
-	duration: float = None
-	```
+```python
+target: RuleOcr
+action: Union[RuleClick, RuleLongClick]=None
+interval: float=None
+duration: float = None
+```
 
 - **self.list_find()**
 
@@ -117,20 +117,20 @@ title: '游戏逻辑复用'
 
   如果是纯文字的，会自动识别自己的位置，根据位置选择向前还是向后翻
 
-  ```python
-  ```
+```python
+```
 
 - **self.set_next_run()**
 
   设置任务的下一次运行时间
 
-  ```python
-  :param target: 可以自定义的下次运行时间
-  :param server: True时会强制设置为用户的每天的定时时间
-  :param success: 判断是成功的还是失败的时间间隔
-  :param task: 任务名称，大驼峰的
-  :param finish: 是完成任务后的时间为基准还是开始任务的时间为基准
-  ```
+```python
+:param target: 可以自定义的下次运行时间
+:param server: True时会强制设置为用户的每天的定时时间
+:param success: 判断是成功的还是失败的时间间隔
+:param task: 任务名称，大驼峰的
+:param finish: 是完成任务后的时间为基准还是开始任务的时间为基准
+```
 
   
 
@@ -157,7 +157,7 @@ title: '游戏逻辑复用'
 
 继承自`BaseTask`和`GameUiAssets`,  你可以通过继承`GameUi`来实现游戏页面的跳转
 
-:::info
+:::note
 
 建立了一个游戏界面类Page,所有的界面跳转都是基于这个类来实现
 
@@ -239,11 +239,11 @@ title: '游戏逻辑复用'
   请注意，返回的时候成功时是进入战斗了！！！
   如果是失败，那就是没有队友进入，然后会退出房间的界面
 
-  ```
-  :param config: InviteConfig邀请队员的配置
-  :param is_first: 如果是第一次开房间的那就要邀请队员，其他情况等待队员进入
-  :return:
-  ```
+```
+:param config: InviteConfig邀请队员的配置
+:param is_first: 如果是第一次开房间的那就要邀请队员，其他情况等待队员进入
+:return:
+```
 
 - **is_in_room（）**
 
@@ -253,9 +253,9 @@ title: '游戏逻辑复用'
 
   如果出现继续邀请队员，就会邀请队员（无论是战斗胜利还是失败）
 
-  ```
-  :param default_invite: 是否勾选默认邀请
-  ```
+```
+:param default_invite: 是否勾选默认邀请
+```
 
 作为队员身份可以有如下的方法
 
@@ -271,8 +271,8 @@ title: '游戏逻辑复用'
   
   如果队长跑路了，或者的等待了很久还没开始那就是失败的返回
   
-  ```
-  :return: 如果成功进入战斗（反正就是不在房间 ）返回 True
-           如果失败了，（退出房间）返回 False
-  ```
+```
+:return: 如果成功进入战斗（反正就是不在房间 ）返回 True
+         如果失败了，（退出房间）返回 False
+```
 

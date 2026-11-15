@@ -30,7 +30,7 @@ class ConfigModel(BaseModel):
 ---------选项（argument），每个选项会有自行的设置
 ```
 
-:::info
+:::note
 
 所有的选项都必须遵循`pydantic`的接口
 
@@ -103,16 +103,16 @@ from pydantic import BaseModel, Field
 
 1. 在`./tasks/<任务名>/config.py`下建立一个任务总的配置类`<任务名+Config>`
 
-   ```python
-   from pydantic import BaseModel, Field
-   from enum import Enum
-   from tasks.Component.config_base import ConfigBase
+```python
+from pydantic import BaseModel, Field
+from enum import Enum
+from tasks.Component.config_base import ConfigBase
+
+class RealmRaid(ConfigBase):
+    pass
+```
    
-   class RealmRaid(ConfigBase):
-       pass
-   ```
-   
-   :::info
+   :::note
    
    为了解决`datetime.timedelta`在pydantic的输出类型不是str这个[**问题**](https://github.com/pydantic/pydantic/discussions/5687)
    
@@ -126,23 +126,23 @@ from pydantic import BaseModel, Field
 
 1. 同样的路径下`./tasks/<任务名>/`新建对应的每个选项组的配置类（当然也可直接定义在步骤1中的`config.py`文件中），如`config.py`文件下的`RaidConfig(BaseModel)`类。
 
-   ```python
-   from enum import Enum
-   from datetime import datetime, timedelta
-   from pydantic import BaseModel, ValidationError, validator, Field
-   
-   class RaidConfig(BaseModel):
-   	pass
-   ```
+```python
+from enum import Enum
+from datetime import datetime, timedelta
+from pydantic import BaseModel, ValidationError, validator, Field
+
+class RaidConfig(BaseModel):
+	pass
+```
 
 2. 将这个 选项组 加入到 任务 中, 
 
-   ```python
-   # ./tasks/<任务名>/config.py 文件
-   
-   class RealmRaid(ConfigBase):
-       raid_config: RaidConfig = Field(default_factory=RaidConfig)
-   ```
+```python
+# ./tasks/<任务名>/config.py 文件
+
+class RealmRaid(ConfigBase):
+    raid_config: RaidConfig = Field(default_factory=RaidConfig)
+```
 
 #### `<2>` 使用通用组件的选项
 
@@ -150,12 +150,12 @@ from pydantic import BaseModel, Field
 
 1. 直接导入其他组件的选项组
 
-   ```python
-   from tasks.Component.config_scheduler import Scheduler
-   
-   class RealmRaid(ConfigBase):
-       scheduler: Scheduler = Field(default_factory=Scheduler)
-   ```
+```python
+from tasks.Component.config_scheduler import Scheduler
+
+class RealmRaid(ConfigBase):
+    scheduler: Scheduler = Field(default_factory=Scheduler)
+```
 
 ### （3）新增  选项
 
@@ -163,86 +163,86 @@ from pydantic import BaseModel, Field
 
    - `int`  、`float`  数字类型
 
-     ``` python
-     priority: int = Field(default=5, description='priority_help')
-     
-     # Field 可填参数:
-     # default[必填]
-     # description[必填]
-     # title[可填]
-     # ge[可填]
-     # le[可填]
-     ```
+``` python
+priority: int = Field(default=5, description='priority_help')
+
+# Field 可填参数:
+# default[必填]
+# description[必填]
+# title[可填]
+# ge[可填]
+# le[可填]
+```
 
    - `str`  输入类型
 
-     ```python
-     serial: str = Field(default="auto",
-                             description='serial_help')
-     # Field 可填参数:
-     # default[必填]
-     # description[必填]
-     # title[可填]
-     
-     ```
+```python
+serial: str = Field(default="auto",
+                        description='serial_help')
+# Field 可填参数:
+# default[必填]
+# description[必填]
+# title[可填]
+
+```
 
    - `bool` 类型
 
-     ```python
-     enable: bool = Field(default=False, description='enable_help')
-     
-     # Field 可填参数:
-     # default[必填]
-     # description[必填]
-     # title[可填]    
-     ```
+```python
+enable: bool = Field(default=False, description='enable_help')
+
+# Field 可填参数:
+# default[必填]
+# description[必填]
+# title[可填]    
+```
 
    - `Enum` 类型
 
-     ```python
-     # 定义可选项
-     from enum import Enum
-     
-     class AttackNumber(str, Enum):
-         NINE = 'nine'
-         ALL = 'all'
-         
-     # 定义参数字段
-     attack_number: AttackNumber = Field(title='Attack Number', default=AttackNumber.ALL,
-                                             description='attack_number_help')
-         
-     # Field 可填参数:
-     # default[必填]
-     # description[必填]
-     # title[可填] 
-     ```
+```python
+# 定义可选项
+from enum import Enum
+
+class AttackNumber(str, Enum):
+    NINE = 'nine'
+    ALL = 'all'
+    
+# 定义参数字段
+attack_number: AttackNumber = Field(title='Attack Number', default=AttackNumber.ALL,
+                                        description='attack_number_help')
+    
+# Field 可填参数:
+# default[必填]
+# description[必填]
+# title[可填] 
+```
 
    - `TimeDelta` 类型
 
      这个类型最后会转化为`str`供gui显示
 
-     ```python
-     success_interval: TimeDelta = Field(default=TimeDelta(days=1), description='success_interval_help')
-         
-     # Field 可填参数:
-     # default[必填]
-     # description[必填]
-     # title[可填] 
-     ```
+```python
+success_interval: TimeDelta = Field(default=TimeDelta(days=1), description='success_interval_help')
+    
+# Field 可填参数:
+# default[必填]
+# description[必填]
+# title[可填] 
+```
 
 2. 一个完整的`Scheduler` 示例
 
-   ```python
-   class Scheduler(ConfigBase):
-       enable: bool = Field(default=False, description='enable_help')
-       next_run: datetime = Field(default="2023-01-01 00:00:00", description='next_run_help')
-       priority: int = Field(default=5, description='priority_help')
-   
-       success_interval: TimeDelta = Field(default=TimeDelta(days=1), description='success_interval_help')
-       failure_interval: TimeDelta = Field(default=TimeDelta(days=1), description='failure_interval_help')
-       server_update: time = Field(default=time(hour=9, minute=0, second=0), description='server_update_help')
-   
-   ```
+```python
+class Scheduler(ConfigBase):
+    enable: bool = Field(default=False, description='enable_help')
+    next_run: datetime = Field(default="2023-01-01 00:00:00", description='next_run_help')
+    priority: int = Field(default=5, description='priority_help')
+
+    success_interval: TimeDelta = Field(default=TimeDelta(days=1), description='success_interval_help')
+    failure_interval: TimeDelta = Field(default=TimeDelta(days=1), description='failure_interval_help')
+    server_update: time = Field(default=time(hour=9, minute=0, second=0), description='server_update_help')
+
+```
 
 ### （4）加入Model
 
@@ -278,7 +278,7 @@ SCHEDULER_PRIORITY 是一个过滤器，用大于号 `>` 连接任务，靠前�
 
 ### （7）翻译
 
-:::info
+:::note
 
 QML的版本的翻译文件在`./module/config/i18n/{lang}.ts`, 这个文件的本质就是html文件。
 

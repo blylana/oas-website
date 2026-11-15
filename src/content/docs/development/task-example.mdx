@@ -118,46 +118,46 @@ class RealmRaidAssets:
 
 3. 为其加入父类
 
-   ```python
-   class ScriptTask(GeneralBattle, GameUi, RealmRaidAssets):
-   ```
+```python
+class ScriptTask(GeneralBattle, GameUi, RealmRaidAssets):
+```
 
    此时我们可以使用 战斗模块、页面切换模块、本任务特有的资源 
 
 4. 在`run()`方法中开始编写脚本代码，这里取几个典型步骤；
 
-   ```python
-   # 点击突破
-   while 1:
-       self.screenshot()
-       if self.appear_then_click(self.I_REALM_RAID, interval=1):
-           continue
-       if self.appear(self.I_BACK_RED, threshold=0.6):
-           break
-   ```
+```python
+# 点击突破
+while 1:
+    self.screenshot()
+    if self.appear_then_click(self.I_REALM_RAID, interval=1):
+        continue
+    if self.appear(self.I_BACK_RED, threshold=0.6):
+        break
+```
 
    上面的代码块中是一个步骤的循环判断，是非常清晰明了的，`I_REALM_RAID`表示探索界面下方的按钮图片`结界突破`, `I_BACK_RED`表示个人突破界面的右上角`红色关闭按钮`，非常方便的来进行代码编写。加入参数`interval=1`是为了防止模拟器设备响应不及时导致多次点击操作。
 
-   ```python
-   def is_ticket(self) -> bool:
-       """
-       如果没有票了，那么就返回False
-       :return:
-       """
-       self.screenshot()
-       cu, res, total = self.O_NUMBER.ocr(self.device.image)
-       if cu == 0 and cu+res == total:
-           logger.warning(f'Execute round failed, no ticket')
-           return False
-       return True
-   ```
+```python
+def is_ticket(self) -> bool:
+    """
+    如果没有票了，那么就返回False
+    :return:
+    """
+    self.screenshot()
+    cu, res, total = self.O_NUMBER.ocr(self.device.image)
+    if cu == 0 and cu+res == total:
+        logger.warning(f'Execute round failed, no ticket')
+        return False
+    return True
+```
 
    上面的代码块中使用`DigitCounter`类型的ocr来判断是否还有票
 
-   ```python
-   self.set_next_run(task='RealmRaid')
-   raise TaskEnd
-   ```
+```python
+self.set_next_run(task='RealmRaid')
+raise TaskEnd
+```
 
    运行任务结束后，重新设置下次的执行时间，并且抛出任务结束的异常。
 

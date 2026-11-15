@@ -39,6 +39,11 @@ export default defineConfig({
         label: 'Documentation',
         path: 'src/content/docs',
         format: 'mdx',
+        match: {
+          // The landing page contains Starlight component imports and is not
+          // a Tina rich-text document.
+          exclude: 'index.mdx',
+        },
         ui: {
           router: ({ document }) => {
             const slug = document?._sys?.breadcrumbs?.join('/');

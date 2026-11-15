@@ -20,7 +20,7 @@ title: '过程元素'
 
 如果不出意外 oas 会将 模拟器截屏投屏到 界面上
 
-:::info
+:::note
 
 写的时候图快，就没认真当投屏来写。轻点喷
 
@@ -60,7 +60,7 @@ title: '过程元素'
 
 ### Image
 
-:::info
+:::note
 
 绿框表示要识别的图片区域
 
@@ -92,7 +92,7 @@ title: '过程元素'
 
 ### Click
 
-:::info
+:::note
 
 红框表示默认的点击区域
 
@@ -104,7 +104,7 @@ title: '过程元素'
 
 ### LongClick
 
-:::info
+:::note
 
 红框表示默认的点击区域
 
@@ -118,7 +118,7 @@ title: '过程元素'
 
 ### Swipe
 
-:::info
+:::note
 
 红框表示滑动的起始区域
 
@@ -134,7 +134,7 @@ title: '过程元素'
 
 ### Ocr
 
-:::info
+:::note
 
 红框表示Ocr的范围
 
@@ -158,7 +158,7 @@ title: '过程元素'
 
 ### List
 
-:::info
+:::note
 
 红框表示每一项的范围
 
@@ -268,15 +268,15 @@ class RealmRaidAssets:
 
 - **ocr**(self, image, keyword=None): 针对不同的模式执行不同的ocr
 
-  ```python
-  match self.mode:
-      case OcrMode.FULL: return Full.ocr_full(self, image, keyword)
-      case OcrMode.SINGLE: return Single.ocr_single(self, image)
-      case OcrMode.DIGIT: return Digit.ocr_digit(self, image)
-      case OcrMode.DIGITCOUNTER: return DigitCounter.ocr_digit_counter(self, image)
-      case OcrMode.DURATION: return Duration.ocr_duration(self, image)
-      case _: return None
-  ```
+```python
+match self.mode:
+    case OcrMode.FULL: return Full.ocr_full(self, image, keyword)
+    case OcrMode.SINGLE: return Single.ocr_single(self, image)
+    case OcrMode.DIGIT: return Digit.ocr_digit(self, image)
+    case OcrMode.DIGITCOUNTER: return DigitCounter.ocr_digit_counter(self, image)
+    case OcrMode.DURATION: return Duration.ocr_duration(self, image)
+    case _: return None
+```
 
   - `Full` -> tuple:  **检测整个图片的文本,并对结果进行过滤。返回的是匹配到的keyword的区域。如果没有匹配到返回(0, 0, 0, 0)**
   - `Single` -> str:  返回识别到的字符串
@@ -290,28 +290,28 @@ class RealmRaidAssets:
 
   获取要滑动的两个点的坐标
 
-  ```python
-  number: int=2  # 要滑动的元素个数
-  after: bool=True  # 向前滑动还是向后滑动，水平方向after为右边，竖直方向后after为下边    
-  ```
+```python
+number: int=2  # 要滑动的元素个数
+after: bool=True  # 向前滑动还是向后滑动，水平方向after为右边，竖直方向后after为下边    
+```
 
 - **self.image_appear()**
 
   判断所定义的图片是否出现
 
-  ```python
-  image: np.ndarray  # 模拟器的截图
-  name: str  # 图片保存的名字，也就是使用工具输入时候的名称
-  ```
+```python
+image: np.ndarray  # 模拟器的截图
+name: str  # 图片保存的名字，也就是使用工具输入时候的名称
+```
 
 - **self.ocr_apper()**
 
   判断所定义的文字是否出现
 
-  ```python
-  image: np.ndarray  # 模拟器的截图
-  name: str  # 使用工具输入时候的名字
-  ```
+```python
+image: np.ndarray  # 模拟器的截图
+name: str  # 使用工具输入时候的名字
+```
 
 ### ImageGrid
 
@@ -321,15 +321,15 @@ class RealmRaidAssets:
 
   底层依赖RuleImage
 
-  ```python
-  images: list[RuleImage]
-  ```
+```python
+images: list[RuleImage]
+```
 
 - **self.find_anyone()**
 
   在这些图片中锁定一张图片，返回的是识别到的图片的对象
 
-  ```python
-  ```
+```python
+```
 
   
