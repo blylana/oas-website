@@ -1,0 +1,33 @@
+---
+title: Onmyoji Auto Script
+description: 阴阳师小助手，一键托管。
+template: splash
+hero:
+  tagline: 阴阳师小助手，一键托管
+  image:
+    file: ../../assets/oas-overview.png
+  actions:
+    - text: 开始使用
+      link: /user-manual/getting-started/
+      icon: right-arrow
+    - text: 开发文档
+      link: /development/preamble/
+      icon: document
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="用户手册" icon="open-book">
+    从安装、模拟器连接到任务配置，快速开始使用 OnmyojiAutoScript。
+    [查看用户手册](/user-manual/getting-started/)
+  </Card>
+  <Card title="开发文档" icon="code-branch">
+    了解 OAS 的过程元素、设备操控、日志和任务开发方式。
+    [查看开发文档](/development/preamble/)
+  </Card>
+  <Card title="项目仓库" icon="github">
+    在 GitHub 查看源码、提交 Issue 或参与开发。
+    [打开 GitHub](https://github.com/runhey/OnmyojiAutoScript)
+  </Card>
+</CardGrid>
