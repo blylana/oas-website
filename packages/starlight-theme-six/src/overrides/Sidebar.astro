@@ -1,0 +1,31 @@
+---
+import SidebarSublist from './SidebarSublist.astro'
+
+const { sidebar: allSidebar } = Astro.locals.starlightRoute
+const pathname = Astro.url.pathname
+const section = pathname === '/development' || pathname.startsWith('/development/')
+  ? 'development'
+  : pathname === '/user-manual' || pathname.startsWith('/user-manual/')
+    ? 'user-manual'
+    : undefined
+
+function belongsToSection(entry, sectionName) {
+  if (!sectionName) return true
+  if (entry.type === 'link') return entry.href.startsWith(`/${sectionName}/`)
+  return entry.entries.some((child) => belongsToSection(child, sectionName))
+}
+
+const sidebar = allSidebar.filter((entry) => belongsToSection(entry, section))
+---
+
+<div class="sidebar">
+  <div class="container-sidebar">
+    <SidebarSublist sublist={sidebar} />
+  </div>
+</div>
+
+<style>
+  .container-sidebar {
+    gap: 0;
+  }
+</style>

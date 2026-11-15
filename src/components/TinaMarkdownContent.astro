@@ -1,0 +1,38 @@
+---
+import { requestWithMetadata } from '@tinacms/astro/data';
+import { tinaField } from '@tinacms/astro/tina-field';
+import { isEditMode } from '@tinacms/astro/is-edit-mode';
+import TinaIsland from '@tinacms/astro/TinaIsland.astro';
+import client from '../../tina/__generated__/client';
+import ThemeMarkdownContent from '@six-tech/starlight-theme-six/overrides/MarkdownContent.astro';
+import { islands } from '../lib/tina/islands';
+
+const pathname = Astro.url.pathname.replace(/^\/+|\/+$/g, '');
+const relativePath = pathname ? `${pathname}.mdx` : '';
+const slug = pathname;
+let document = null;
+
+if (relativePath && isEditMode(Astro.request)) {
+  try {
+    const result = await requestWithMetadata(
+      client.queries.docs({ relativePath }),
+      { priority: 'primary' },
+    );
+    document = result.data?.docs;
+  } catch {
+    // Starlight can render files that Tina does not manage (for example MDX pages).
+  }
+}
+---
+
+<div
+  data-tina-field={document ? tinaField(document, 'body') : undefined}
+>
+  {document && isEditMode(Astro.request) ? (
+    <TinaIsland name="docs" wrapper={islands.docs.wrapper} params={{ slug }} primary>
+      <ThemeMarkdownContent><slot /></ThemeMarkdownContent>
+    </TinaIsland>
+  ) : (
+    <ThemeMarkdownContent><slot /></ThemeMarkdownContent>
+  )}
+</div>

@@ -1,41 +1,27 @@
-# Website
+# OnmyojiAutoScript 文档站
 
-This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
+这是 OnmyojiAutoScript 的中文文档站，使用 Starlight 构建，包含用户手册和开发文档。
 
-### Installation
+## 本地开发
 
-```
-$ yarn
-```
-
-### Local Development
-
-```
-$ yarn start
+```bash
+pnpm install
+pnpm dev
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+开发服务器默认运行在 `http://localhost:4321/`。构建生产版本：
 
-### Build
-
-```
-$ yarn build
-```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
-
-### Deployment
-
-Using SSH:
-
-```
-$ USE_SSH=true yarn deploy
+```bash
+pnpm build
+pnpm preview
 ```
 
-Not using SSH:
+## 内容结构
 
-```
-$ GIT_USER=<Your GitHub username> yarn deploy
-```
+- `src/content/docs/user-manual/`：用户手册
+- `src/content/docs/development/`：开发文档
+- `public/images/`、`public/picture/`：从旧站迁移的图片资源
+- `packages/starlight-theme-six/src/overrides/Header.astro`：Six 主题 Header，包含站点导航和主题操作
+- `packages/starlight-theme-six/src/overrides/Sidebar.astro`：Six 主题 Sidebar，按文档区域过滤目录
 
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+站点配置位于 `astro.config.mjs`，文档侧栏和导航入口都在这里维护。

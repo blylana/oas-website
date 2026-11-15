@@ -1,0 +1,103 @@
+---
+import config from 'virtual:starlight/user-config'
+import Search from './Search.astro'
+import SocialIcons from './SocialIcons.astro'
+import LanguageSelect from '@astrojs/starlight/components/LanguageSelect.astro'
+
+import ThemeSelect from './ThemeSelect.astro'
+import SiteTitle from './SiteTitle.astro'
+import MobileMenuToggle from './MobileMenuToggle.astro'
+
+/**
+ * Render the `Search` component if Pagefind is enabled or the default search component has been overridden.
+ */
+const shouldRenderSearch = config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro'
+const pathname = Astro.url.pathname
+const isUserManual = pathname === '/user-manual' || pathname.startsWith('/user-manual/')
+const isDevelopment = pathname === '/development' || pathname.startsWith('/development/')
+---
+
+<div class="site-title-wrapper">
+  <SiteTitle />
+  <nav class="oas-nav" aria-label="主导航">
+    <a href="/user-manual/getting-started/" aria-current={isUserManual ? 'page' : undefined}>用户手册</a>
+    <a href="/development/preamble/" aria-current={isDevelopment ? 'page' : undefined}>开发文档</a>
+  </nav>
+</div>
+
+<MobileMenuToggle />
+
+<div class="header-right">
+  {shouldRenderSearch && <Search />}
+
+  <nav class="header-nav">
+    <div>
+      <SocialIcons />
+    </div>
+    <div>
+      <ThemeSelect />
+    </div>
+    <div>
+      <LanguageSelect />
+    </div>
+  </nav>
+</div>
+
+<style>
+  .site-title-wrapper {
+    display: none;
+    margin-right: 1rem;
+  }
+
+  .oas-nav {
+    gap: 1rem;
+    align-items: center;
+    display: flex;
+    margin-left: 4rem;
+    white-space: nowrap;
+  }
+
+  .oas-nav a {
+    color: var(--muted-foreground);
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .oas-nav a:hover,
+  .oas-nav a:focus-visible,
+  .oas-nav a[aria-current='page'] {
+    color: var(--accent-foreground);
+  }
+
+  .header-right {
+    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+  }
+
+  @media (min-width: 768px) {
+    .header-right {
+      justify-content: flex-end;
+    }
+  }
+
+  .header-nav {
+    gap: 0.125rem;
+    align-items: center;
+    display: flex;
+  }
+
+  @media (min-width: 768px) {
+    .site-title-wrapper {
+      display: flex;
+    }
+
+    .header-right {
+      justify-content: flex-end;
+    }
+  }
+</style>
