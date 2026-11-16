@@ -1,4 +1,35 @@
-import { defineConfig } from 'tinacms';
+import { Clerk } from '@clerk/clerk-js';
+import { ui } from '@clerk/ui';
+import { ClerkAuthProvider } from 'tinacms-clerk/dist/tinacms';
+import { defineConfig, LocalAuthProvider } from 'tinacms';
+
+const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
+const clerk = new Clerk(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '');
+
+class AstroClerkAuthProvider extends ClerkAuthProvider {
+	async getToken() {
+		const token = await super.getToken();
+		writeClerkTokenCookie(token?.id_token || token?.access_token);
+		return token;
+	}
+}
+
+function writeClerkTokenCookie(value?: string) {
+	if (typeof document !== 'undefined' && value) {
+		document.cookie = `tina_clerk_token=${encodeURIComponent(value)}; Path=/; SameSite=Lax`;
+	}
+}
+
+if (typeof window !== 'undefined') {
+	const loadClerk = clerk.load.bind(clerk);
+	clerk.load = (options = {}) => loadClerk({ ui, ...options });
+	const syncClerkToken = async () => {
+		await clerk.load({ ui });
+		writeClerkTokenCookie(await clerk.session?.getToken());
+	};
+	void syncClerkToken();
+	clerk.addListener(() => void syncClerkToken());
+}
 
 // Your hosting provider likely exposes this as an environment variable
 const branch =
@@ -11,6 +42,16 @@ const branch =
 
 export default defineConfig({
   branch,
+	authProvider: isLocal
+		? new LocalAuthProvider()
+		: new AstroClerkAuthProvider({
+				clerk,
+				allowedList: process.env.TINA_PUBLIC_ALLOWED_EMAIL
+					? [process.env.TINA_PUBLIC_ALLOWED_EMAIL]
+					: undefined,
+				orgId: process.env.TINA_PUBLIC_CLERK_ORG_ID,
+			}),
+	contentApiUrlOverride: '/api/tina/gql',
   // Get this from tina.io
   clientId: process.env.NEXT_PUBLIC_TINA_CLIENT_ID,
   // Get this from tina.io

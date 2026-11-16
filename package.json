@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "tinacms dev -c \"astro dev\"",
-    "start": "astro dev",
+    "start": "tsx server.ts",
     "build": "node scripts/build.mjs",
     "preview": "astro preview",
     "astro": "astro"
@@ -12,18 +12,29 @@
   "dependencies": {
     "@astrojs/node": "^11.1.13",
     "@astrojs/starlight": "^0.43.1",
+    "@clerk/backend": "0.38.15",
+    "@clerk/clerk-js": "6.43.0",
+    "@clerk/ui": "1.42.5",
     "@fontsource/inter": "^5.2.6",
     "@fontsource/jetbrains-mono": "^5.2.6",
     "@six-tech/starlight-theme-six": "workspace:*",
     "@tinacms/astro": "^0.8.0",
+    "@tinacms/datalayer": "^3.0.0",
     "astro": "^7.3.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
     "sharp": "^0.35.3",
-    "tinacms": "^3.15.2"
+    "tinacms": "^3.15.2",
+    "tinacms-clerk": "24.0.2",
+    "tinacms-gitprovider-github": "^5.0.0",
+    "upstash-redis-level": "^1.1.2"
   },
   "devDependencies": {
     "@tinacms/cli": "^4.0.5",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "tsx": "^4.19.4"
   }
 }

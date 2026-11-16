@@ -3,7 +3,7 @@ import { requestWithMetadata } from '@tinacms/astro/data';
 import { tinaField } from '@tinacms/astro/tina-field';
 import { isEditMode } from '@tinacms/astro/is-edit-mode';
 import TinaIsland from '@tinacms/astro/TinaIsland.astro';
-import client from '../../tina/__generated__/client';
+import { serverClient, serverFetchOptions } from '../lib/tina/server-client';
 import ThemeMarkdownContent from '@six-tech/starlight-theme-six/overrides/MarkdownContent.astro';
 import { islands } from '../lib/tina/islands';
 
@@ -15,7 +15,7 @@ let document = null;
 if (relativePath && isEditMode(Astro.request)) {
   try {
     const result = await requestWithMetadata(
-      client.queries.docs({ relativePath }),
+      serverClient.queries.docs({ relativePath }, { fetchOptions: serverFetchOptions(Astro.request) }),
       { priority: 'primary' },
     );
     document = result.data?.docs;

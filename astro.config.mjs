@@ -6,6 +6,8 @@ import starlightThemeSix from '@six-tech/starlight-theme-six';
 import tina from '@tinacms/astro/integration';
 import { tinaAdminDevRedirect } from '@tinacms/astro/vite';
 
+const isDev = process.env.NODE_ENV === 'development';
+
 const userManual = [
 	{ label: '开始', slug: 'user-manual/getting-started' },
 	{ label: '别像弱智一样提问', slug: 'user-manual/scientific-question' },
@@ -38,7 +40,7 @@ const development = [
 export default defineConfig({
 	site: 'https://www.onmyojiautoscript.cn',
 	output: 'server',
-	adapter: node({ mode: 'standalone' }),
+	adapter: node({ mode: 'middleware' }),
 	integrations: [
 		tina(),
 		starlight({
@@ -80,15 +82,19 @@ export default defineConfig({
 			credits: false,
 		}),
 	],
-	vite: {
-		plugins: [tinaAdminDevRedirect()],
-		server: {
-			proxy: {
-				// Keep the browser on Astro's port while forwarding Tina's local
-				// admin UI and GraphQL endpoint to the Tina dev server.
-				'/admin': 'http://localhost:4001',
-				'/graphql': 'http://localhost:4001',
+	...(isDev
+		? {
+			vite: {
+				plugins: [tinaAdminDevRedirect()],
+				server: {
+					proxy: {
+						// Keep the browser on Astro's port while forwarding Tina's local
+						// admin UI and GraphQL endpoint to the Tina dev server.
+						'/admin': 'http://localhost:4001',
+						'/graphql': 'http://localhost:4001',
+					},
+				},
 			},
-		},
-	},
+		}
+		: {}),
 });

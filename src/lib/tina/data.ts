@@ -1,7 +1,13 @@
 import { requestWithMetadata } from '@tinacms/astro/data';
-import client from '../../../tina/__generated__/client';
+import { serverClient, serverFetchOptions } from './server-client';
 
-export const getDoc = (slug: string) =>
-  requestWithMetadata(client.queries.docs({ relativePath: slug + '.mdx' }), {
-    priority: 'primary',
-  });
+export const getDoc = (slug: string, request?: Request) =>
+  requestWithMetadata(
+    serverClient.queries.docs(
+      { relativePath: slug + '.mdx' },
+      request ? { fetchOptions: serverFetchOptions(request) } : undefined,
+    ),
+    {
+      priority: 'primary',
+    },
+  );

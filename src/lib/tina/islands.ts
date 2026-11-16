@@ -8,7 +8,7 @@ import { getDoc } from './data';
 
 export const islands: IslandRegistry = {
   docsTitle: {
-    fetch: (_request, params) => getDoc(params.get('slug') ?? ''),
+    fetch: (request, params) => getDoc(params.get('slug') ?? '', request),
     component: DocsTitle,
     wrapper: { tag: 'div' },
     propsFromData: (data) => ({
@@ -16,7 +16,7 @@ export const islands: IslandRegistry = {
     }),
   },
   docs: {
-    fetch: (_request, params) => getDoc(params.get('slug') ?? ''),
+    fetch: (request, params) => getDoc(params.get('slug') ?? '', request),
     component: DocsBody,
     wrapper: { tag: 'div' },
     propsFromData: (data) => ({
