@@ -16,6 +16,35 @@ pnpm build
 pnpm preview
 ```
 
+## 本地部署
+
+编译 -> 启动数据库 -> 启动后端 ->启动前端
+```bash
+$env:TINA_PUBLIC_IS_LOCAL="false"
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+```bash
+# 开启
+Start-Service MongoDB
+# 关闭
+Stop-Service MongoDB
+# 查看状态
+Get-Service MongoDB
+```
+
+```bash
+$env:TINA_PUBLIC_IS_LOCAL="false"
+$env:PORT="4322"
+pnpm start
+```
+
+```bash
+caddy run --config .\Caddyfile
+```
+
+
 ## 内容结构
 
 - `src/content/docs/user-manual/`：用户手册

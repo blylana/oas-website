@@ -10,9 +10,11 @@ import { islands } from '../lib/tina/islands';
 const pathname = Astro.url.pathname.replace(/^\/+|\/+$/g, '');
 const relativePath = pathname ? `${pathname}.mdx` : '';
 const slug = pathname;
+const editable = Boolean(relativePath);
+const editMode = !Astro.isPrerendered && isEditMode(Astro.request);
 let document = null;
 
-if (relativePath && isEditMode(Astro.request)) {
+if (relativePath && editMode) {
   try {
     const result = await requestWithMetadata(
       serverClient.queries.docs({ relativePath }, { fetchOptions: serverFetchOptions(Astro.request) }),
@@ -28,7 +30,7 @@ if (relativePath && isEditMode(Astro.request)) {
 <div
   data-tina-field={document ? tinaField(document, 'body') : undefined}
 >
-  {document && isEditMode(Astro.request) ? (
+  {editable ? (
     <TinaIsland name="docs" wrapper={islands.docs.wrapper} params={{ slug }} primary>
       <ThemeMarkdownContent><slot /></ThemeMarkdownContent>
     </TinaIsland>

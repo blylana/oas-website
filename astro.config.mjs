@@ -39,7 +39,7 @@ const development = [
 
 export default defineConfig({
 	site: 'https://www.onmyojiautoscript.cn',
-	output: 'server',
+	output: 'static',
 	adapter: node({ mode: 'middleware' }),
 	integrations: [
 		tina(),
@@ -63,9 +63,9 @@ export default defineConfig({
 			locales: {
 				root: { label: '简体中文', lang: 'zh-CN' },
 			},
-			// Tina visual editing needs the page request headers so its Astro
-			// middleware can inject the live editing bridge into the iframe.
-			prerender: false,
+			// Public pages are prerendered. TinaIsland keeps the editor's
+			// on-demand refresh route available for static pages.
+			prerender: true,
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/runhey/OnmyojiAutoScript' },
 			],

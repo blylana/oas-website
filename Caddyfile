@@ -1,0 +1,8 @@
+﻿:4321 {
+    root * D:/Project/OnmyojiAutoScript-website/dist/client
+
+    @tina path /api/tina/* /tina-island/*
+    reverse_proxy @tina 127.0.0.1:4322
+
+    file_server
+}
