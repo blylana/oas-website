@@ -40,6 +40,8 @@ $env:PORT="4322"
 pnpm start
 ```
 
+后端日志以 JSON 输出到标准输出，默认级别为 `info`。可通过 `LOG_LEVEL=debug|info|warn|error|fatal` 调整级别；每个请求都会返回 `x-request-id`，便于和服务端日志关联。
+
 ```bash
 caddy run --config .\Caddyfile
 ```

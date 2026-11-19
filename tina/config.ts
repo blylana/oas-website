@@ -7,28 +7,69 @@ const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
 const clerk = new Clerk(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '');
 
 class AstroClerkAuthProvider extends ClerkAuthProvider {
-	async getToken() {
-		const token = await super.getToken();
-		writeClerkTokenCookie(token?.id_token || token?.access_token);
-		return token;
-	}
+  async getToken() {
+    const token = await super.getToken();
+    const value = token as { id_token?: string; access_token?: string } | null;
+    writeClerkTokenCookie(value?.id_token || value?.access_token);
+    return token;
+  }
 }
 
 function writeClerkTokenCookie(value?: string) {
-	if (typeof document !== 'undefined' && value) {
-		document.cookie = `tina_clerk_token=${encodeURIComponent(value)}; Path=/; SameSite=Lax`;
-	}
+  if (typeof document !== 'undefined' && value) {
+    document.cookie = `tina_clerk_token=${encodeURIComponent(value)}; Path=/; SameSite=Lax`;
+  }
 }
 
 if (typeof window !== 'undefined') {
-	const loadClerk = clerk.load.bind(clerk);
-	clerk.load = (options = {}) => loadClerk({ ui, ...options });
-	const syncClerkToken = async () => {
-		await clerk.load({ ui });
-		writeClerkTokenCookie(await clerk.session?.getToken());
-	};
-	void syncClerkToken();
-	clerk.addListener(() => void syncClerkToken());
+  const loadClerk = clerk.load.bind(clerk);
+  clerk.load = (options = {}) => loadClerk({ ui, ...options });
+  const syncClerkToken = async () => {
+    await clerk.load({ ui });
+    // 加载 Clerk；
+    // 获取当前会话的 Token；
+    // 将 Token 写入 Cookie；
+    // 如果没有 Token，则写入 undefined，通常表示清除或更新 Cookie。
+    writeClerkTokenCookie((await clerk.session?.getToken()) ?? undefined);
+  };
+  // 页面初始化时立即同步一次 Token；
+  void syncClerkToken();
+  clerk.addListener(() => void syncClerkToken());
+
+  // Tina can read the GitHub token only after the user has linked GitHub in
+  // Clerk. A save request cannot start an OAuth redirect from XHR, so expose
+  // an explicit consent action for the admin status/error UI.
+  // 挂载一个全局函数，方便页面上的按钮或管理后台调用
+  (window as typeof window & { __OAS_CONNECT_GITHUB__?: () => Promise<void> })
+    .__OAS_CONNECT_GITHUB__ = async () => {
+      try {
+        await clerk.load({ ui });
+        if (!clerk.user) {
+          (clerk as unknown as { openSignIn?: () => void }).openSignIn?.();
+          return;
+        }
+        const redirectUrl = window.location.pathname;
+        const additionalScopes = ['public_repo'] as never[];
+        const existing = clerk.user.externalAccounts.find(
+          (account) => account.provider === 'github',
+        );
+        // 复用已有账号或创建新账号
+        const resource = existing
+          ? await existing.reauthorize({ redirectUrl, additionalScopes })
+          : await clerk.user.createExternalAccount({
+            strategy: 'oauth_github' as never,
+            redirectUrl,
+            additionalScopes,
+          });
+        // 跳转到 GitHub 授权页面
+        const target = resource.verification?.externalVerificationRedirectURL;
+        if (target) window.location.assign(target.href);
+        else window.location.reload();
+      } catch (error) {
+        console.error('GitHub authorization failed', error);
+        window.alert('GitHub 授权没有完成，请再试一次。');
+      }
+    };
 }
 
 // Your hosting provider likely exposes this as an environment variable
@@ -42,16 +83,16 @@ const branch =
 
 export default defineConfig({
   branch,
-	authProvider: isLocal
-		? new LocalAuthProvider()
-		: new AstroClerkAuthProvider({
-				clerk,
-				allowedList: process.env.TINA_PUBLIC_ALLOWED_EMAIL
-					? [process.env.TINA_PUBLIC_ALLOWED_EMAIL]
-					: undefined,
-				orgId: process.env.TINA_PUBLIC_CLERK_ORG_ID,
-			}),
-	contentApiUrlOverride: '/api/tina/gql',
+  authProvider: isLocal
+    ? new LocalAuthProvider()
+    : new AstroClerkAuthProvider({
+      clerk,
+      allowedList: process.env.TINA_PUBLIC_ALLOWED_EMAIL
+        ? [process.env.TINA_PUBLIC_ALLOWED_EMAIL]
+        : undefined,
+      orgId: process.env.TINA_PUBLIC_CLERK_ORG_ID,
+    }),
+  contentApiUrlOverride: '/api/tina/gql',
   // Get this from tina.io
   clientId: process.env.NEXT_PUBLIC_TINA_CLIENT_ID,
   // Get this from tina.io
@@ -68,6 +109,7 @@ export default defineConfig({
   // },
   media: {
     tina: {
+      static: true,
       mediaRoot: '',
       publicFolder: 'public',
     },

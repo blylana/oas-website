@@ -5,7 +5,7 @@ const hasTinaCloudCredentials = Boolean(
 	process.env.NEXT_PUBLIC_TINA_CLIENT_ID && process.env.TINA_TOKEN,
 );
 
-const tinaArgs = ['exec', 'tinacms', 'build'];
+const tinaArgs = ['exec', 'tinacms', 'build', '--skip-indexing'];
 if (!hasTinaCloudCredentials) tinaArgs.push('--local', '--skip-cloud-checks');
 
 function run(args) {

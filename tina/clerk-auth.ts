@@ -1,4 +1,5 @@
 import { Clerk } from '@clerk/backend';
+import { logger } from './logger';
 
 type NodeRequest = {
 	headers?: Record<string, string | string[] | undefined>;
@@ -69,12 +70,18 @@ export function ClerkBackendAuthenticationForAstro({
 					primaryEmail &&
 					(!allowList || allowList.includes(primaryEmail.emailAddress))
 				) {
+					// The Tina API handler forwards `req.session.user` to `resolve()` as
+					// `ctxUser`. Our database proxy uses the same identity to pick the
+					// per-user draft namespace.
+					(req as { session?: { user?: { id: string } } }).session = {
+						user: { id: user.id },
+					};
 					return { isAuthorized: true };
 				}
 			}
 
 			if (requestState.reason === 'unexpected-error') {
-				console.error(requestState.message);
+				logger.error('tina.auth.clerk_unexpected_error', { message: requestState.message });
 			}
 			return {
 				isAuthorized: false,
