@@ -115,22 +115,22 @@ function convertKey(key: string, from: string, to: string) {
 	return key;
 }
 
-export async function cloneDraft(userId: string) {
+export async function cloneDraft(userId: string, from = 'main') {
 	if (isLocal) return false;
 	const namespace = `draft:${userId}`;
 	if (await hasNamespace(namespace)) return false;
 
 	const collection = appDb().collection(COLLECTION);
 	const [content, metadata] = await Promise.all([
-		collection.find({ key: keyRange(contentPrefix('main')) }).toArray(),
-		collection.find({ key: keyRange(metaPrefix('main')) }).toArray(),
+		collection.find({ key: keyRange(contentPrefix(from)) }).toArray(),
+		collection.find({ key: keyRange(metaPrefix(from)) }).toArray(),
 	]);
 	const docs = [...content, ...metadata].map((doc) => ({
-		key: convertKey(doc.key as string, 'main', namespace),
+		key: convertKey(doc.key as string, from, namespace),
 		value: doc.value,
 	}));
 	if (!docs.length) {
-		throw new Error('main namespace is empty; run scripts/migrate-main.mjs first');
+		throw new Error('The published index is empty; build the site and run scripts/reindex-main.ts');
 	}
 	try {
 		await collection.insertMany(docs, { ordered: false });

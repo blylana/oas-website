@@ -3,7 +3,7 @@ import { getGithubIdentity } from './github-identity';
 import { withLock } from './lock';
 import { purgeWorkspace } from './purge';
 import { syncPrState } from './pr-sync';
-import { findWorkspaces, INACTIVE_MS } from './workspace';
+import { findWorkspaces, getWorkspace, INACTIVE_MS } from './workspace';
 import { logger } from './logger';
 
 const SWEEP_MS = 10 * 60 * 1000;
@@ -12,11 +12,37 @@ let running = false;
 
 async function tokenFor(userId: string) {
 	try {
-		return (await getGithubIdentity(userId)).token;
+		return await getGithubIdentity(userId);
 	} catch (error) {
 		logger.warn('sweep.github_token_unavailable', { error, userId });
 		return null;
 	}
+}
+
+export async function sweepWorkspace(userId: string, now: Date, resolveIdentity = tokenFor) {
+	await withLock(userId, async () => {
+		let workspace = await getWorkspace(userId);
+		if (!workspace) return;
+		const expired = !workspace.prNumber && workspace.updatedAt.getTime() < now.getTime() - INACTIVE_MS;
+		const terminal = workspace.state === 'merged' || workspace.state === 'closed';
+		if (!workspace.purging && !workspace.pendingCommit && !workspace.prNumber && !terminal && !expired) return;
+
+		const identity = await resolveIdentity(userId);
+		if (!identity || identity.login !== workspace.login) return;
+		const { token } = identity;
+		if (workspace.prNumber && !workspace.purging) {
+			workspace = await syncPrState(workspace, token);
+		}
+		if (workspace.purging || workspace.state === 'merged' || workspace.state === 'closed') {
+			await purgeWorkspace(workspace, token);
+			return;
+		}
+		if (workspace.pendingCommit) {
+			await commitOps(workspace.pendingOps ?? [], workspace, { userId, login: identity.login, token });
+			return;
+		}
+		if (expired) await purgeWorkspace(workspace, token);
+	});
 }
 
 export async function runSweep(now = new Date()): Promise<void> {
@@ -38,45 +64,11 @@ export async function runSweep(now = new Date()): Promise<void> {
 			100,
 		);
 
-		for (const workspace of workspaces) {
+		for (const { _id } of workspaces) {
 			try {
-				await withLock(workspace._id, async () => {
-					const token = await tokenFor(workspace._id);
-					if (workspace.purging || workspace.state === 'merged' || workspace.state === 'closed') {
-						if (token) await purgeWorkspace(workspace, token);
-						return;
-					}
-
-					if (workspace.pendingCommit && token && workspace.login) {
-						await commitOps(workspace.pendingOps ?? [], workspace, {
-							userId: workspace._id,
-							login: workspace.login,
-							token,
-						});
-						return;
-					}
-
-					if (workspace.state === 'submitted' && workspace.prNumber && token) {
-						const synced = await syncPrState(workspace, token);
-						if (synced.state === 'merged' || synced.state === 'closed') {
-							await purgeWorkspace(synced, token);
-						}
-						return;
-					}
-
-					if (workspace.prNumber && token) {
-						const synced = await syncPrState(workspace, token);
-						if (synced.state === 'merged' || synced.state === 'closed') {
-							await purgeWorkspace(synced, token);
-						}
-						return;
-					}
-
-					// Inactive for 7 days and no open PR: discard the draft and branch.
-					if (token) await purgeWorkspace(workspace, token);
-				});
+				await sweepWorkspace(_id, now);
 			} catch (error) {
-				logger.error('sweep.workspace_failed', { error, workspaceId: workspace._id });
+				logger.error('sweep.workspace_failed', { error, workspaceId: _id });
 			}
 		}
 		logger.info('sweep.completed', { workspaceCount: workspaces.length });

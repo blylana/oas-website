@@ -5,6 +5,7 @@ import { after, before, describe, it } from 'node:test';
 const prefix = `test-backend-${randomUUID()}`;
 const userId = `${prefix}-user`;
 const login = `${prefix}-login`;
+const branch = `oas-draft-${randomUUID()}`;
 const owner = `${prefix}-owner`;
 const repo = `${prefix}-repo`;
 
@@ -22,7 +23,7 @@ type RequestRecord = {
 
 type MockState = {
 	requests: RequestRecord[];
-	mode: 'commit' | 'pending' | 'pr-merged' | 'pr-closed' | 'pr-404' | 'purge' | 'purge-pending';
+	mode: 'commit' | 'pending' | 'pr-merged' | 'pr-closed' | 'pr-404' | 'purge' | 'purge-pending' | 'close-pending';
 	sha: number;
 	head?: string;
 };
@@ -60,7 +61,7 @@ function createGithubMock(state: MockState) {
 		if (method === 'GET' && path === `/repos/${owner}/${repo}/git/ref/heads/tina`) {
 			return jsonResponse(200, { object: { sha: 'upstream-base' } });
 		}
-		if (method === 'GET' && path === `/repos/${login}/${repo}/git/ref/heads/${login}`) {
+		if (method === 'GET' && path === `/repos/${login}/${repo}/git/ref/heads/${branch}`) {
 			return state.head
 				? jsonResponse(200, { object: { sha: state.head } })
 				: jsonResponse(404, { message: 'missing branch' });
@@ -79,7 +80,7 @@ function createGithubMock(state: MockState) {
 			state.head = String(body?.sha);
 			return jsonResponse(201, {});
 		}
-		if (method === 'PATCH' && path === `/repos/${login}/${repo}/git/refs/heads/${login}`) {
+		if (method === 'PATCH' && path === `/repos/${login}/${repo}/git/refs/heads/${branch}`) {
 			state.head = String(body?.sha);
 			return jsonResponse(200, {});
 		}
@@ -105,10 +106,12 @@ function createGithubMock(state: MockState) {
 			});
 		}
 		if (method === 'PATCH' && path === `/repos/${owner}/${repo}/pulls/123`) {
+			if (state.mode === 'close-pending') return jsonResponse(503, { message: 'mock PR close failure' });
 			return jsonResponse(200, {});
 		}
-		if (method === 'DELETE' && path === `/repos/${login}/${repo}/git/refs/heads/${login}`) {
-			if (state.mode === 'purge-pending') return jsonResponse(500, { message: 'mock delete failure' });
+		if (method === 'DELETE' && path === `/repos/${login}/${repo}/git/refs/heads/${branch}`) {
+			if (state.mode === 'purge-pending') return jsonResponse(422, { message: 'mock delete refused' });
+			state.head = undefined;
 			return emptyResponse(204);
 		}
 		return jsonResponse(404, { message: `unhandled mock route ${method} ${path}` });
@@ -151,6 +154,7 @@ after(async () => {
 			db.collection<{ _id: string }>('workspaces').deleteMany(idFilter),
 			db.collection<{ _id: string }>('locks').deleteMany(idFilter),
 			db.collection<{ _id: string }>('ratelimits').deleteMany(idFilter),
+			db.collection<{ _id: string }>('editRevisions').deleteMany(idFilter),
 			db.collection('tinacms').deleteMany({ key: { $regex: `^${contentPrefix('draft:').slice(0, -1)}${prefix}-` } }),
 		]);
 		for (const result of results) {
@@ -166,7 +170,7 @@ function createFixture(id: string, overrides: Partial<Parameters<typeof createWo
 		userId: id,
 		login,
 		fork: `${login}/${repo}`,
-		branch: login,
+		branch,
 		baseBranch: 'tina',
 		...overrides,
 	});
@@ -227,7 +231,7 @@ describe('backend persistence and GitHub mapping', () => {
 			{ path: 'docs/b.mdx', mode: '100644', type: 'blob', sha: null },
 		]);
 		assert.deepEqual(state.requests.find((request) => request.path.endsWith('/git/refs'))?.body, {
-			ref: `refs/heads/${login}`,
+			ref: `refs/heads/${branch}`,
 			sha: 'commit-2',
 		});
 		const saved = await getWorkspace(commitUser);
@@ -286,11 +290,11 @@ describe('backend persistence and GitHub mapping', () => {
 	it('purges the PR, branch and workspace, and preserves a pending purge on branch failure', async () => {
 		const purgeId = `${userId}-purge`;
 		await createFixture(purgeId, { state: 'submitted' });
-		const submitted = await updateWorkspace(purgeId, { prNumber: 123 });
+		const submitted = await updateWorkspace(purgeId, { prNumber: 123, headSha: 'managed-head' });
 		const drafts = db.collection('tinacms');
 		const draftKey = `${contentPrefix(`draft:${purgeId}`)}fixture.mdx`;
 		await drafts.insertOne({ key: draftKey, value: { title: 'fixture' } });
-		let state: MockState = { requests: [], mode: 'purge', sha: 0 };
+		let state: MockState = { requests: [], mode: 'purge', sha: 0, head: 'managed-head' };
 		globalThis.fetch = createGithubMock(state) as typeof fetch;
 		const done = await purgeWorkspace(submitted, 'mock-token');
 		assert.equal(done, 'done');
@@ -298,12 +302,14 @@ describe('backend persistence and GitHub mapping', () => {
 		assert.equal(await drafts.findOne({ key: draftKey }), null);
 		assert.deepEqual(state.requests.map(({ method, path }) => [method, path]), [
 			['PATCH', `/repos/${owner}/${repo}/pulls/123`],
-			['DELETE', `/repos/${login}/${repo}/git/refs/heads/${login}`],
+			['GET', `/repos/${login}/${repo}/git/ref/heads/${branch}`],
+			['DELETE', `/repos/${login}/${repo}/git/refs/heads/${branch}`],
 		]);
 
 		const pendingId = `${userId}-pending-purge`;
-		const workspace = await createFixture(pendingId, { state: 'submitted' });
-		state = { requests: [], mode: 'purge-pending', sha: 0 };
+		await createFixture(pendingId, { state: 'submitted' });
+		const workspace = await updateWorkspace(pendingId, { headSha: 'managed-head' });
+		state = { requests: [], mode: 'purge-pending', sha: 0, head: 'managed-head' };
 		globalThis.fetch = createGithubMock(state) as typeof fetch;
 		const pending = await purgeWorkspace(workspace, 'mock-token');
 		assert.equal(pending, 'pending');
@@ -313,5 +319,81 @@ describe('backend persistence and GitHub mapping', () => {
 		state.mode = 'purge';
 		assert.equal(await purgeWorkspace(saved!, 'mock-token'), 'done');
 		assert.equal(await getWorkspace(pendingId), null);
+	});
+
+	it('preserves a branch edited outside Tina and invalidates old editors', async () => {
+		const { assertEditRevision, getEditRevision } = await import('../tina/edit-revision');
+		const id = `${userId}-foreign-ref`;
+		await createFixture(id);
+		const revision = await getEditRevision(id);
+		await assertEditRevision(id, revision);
+		const workspace = await updateWorkspace(id, { headSha: 'recorded-head', baseSha: 'base-sha' });
+		const state: MockState = { requests: [], mode: 'commit', sha: 0, head: 'outside-edit' };
+		globalThis.fetch = createGithubMock(state) as typeof fetch;
+		const result = await commitOps([{ op: 'put', path: 'docs/a.mdx', content: 'edit' }], workspace, {
+			userId: id, login, token: 'mock-token',
+		});
+		assert.equal(result.committed, false);
+		assert.equal(await purgeWorkspace(workspace, 'mock-token'), 'done');
+		assert.ok(state.requests.every(({ method }) => method === 'GET'));
+		assert.equal(state.head, 'outside-edit');
+		await assert.rejects(assertEditRevision(id, revision), { code: 'stale_editor' });
+	});
+
+	it('retains PR metadata when closing the PR fails after confirming the branch is absent', async () => {
+		const id = `${userId}-close-pending`;
+		await createFixture(id, { state: 'submitted' });
+		const submitted = await updateWorkspace(id, { prNumber: 123 });
+		const state: MockState = { requests: [], mode: 'close-pending', sha: 0 };
+		globalThis.fetch = createGithubMock(state) as typeof fetch;
+		assert.equal(await purgeWorkspace(submitted, 'mock-token'), 'pending');
+		const saved = await getWorkspace(id);
+		assert.equal(saved?.prNumber, 123);
+		assert.equal(saved?.purging, true);
+		state.mode = 'purge';
+		assert.equal(await purgeWorkspace(saved!, 'mock-token'), 'done');
+		assert.equal(await getWorkspace(id), null);
+	});
+
+	it('rejects a save that discovers its PR has closed', async () => {
+		const { prepareWrite } = await import('../tina/write-context');
+		const id = `${userId}-closed-save`;
+		await createFixture(id, { state: 'submitted' });
+		await updateWorkspace(id, { prNumber: 123 });
+		const state: MockState = { requests: [], mode: 'pr-closed', sha: 0 };
+		globalThis.fetch = createGithubMock(state) as typeof fetch;
+		await assert.rejects(prepareWrite({ userId: id, login, githubToken: 'mock-token' }), { code: 'stale_editor' });
+		assert.equal(await getWorkspace(id), null);
+		assert.ok(!state.requests.some(({ method }) => method === 'POST'));
+	});
+
+	it('rechecks an expired candidate after a save has renewed it', async () => {
+		const { sweepWorkspace } = await import('../tina/sweep');
+		const { INACTIVE_MS } = await import('../tina/workspace');
+		const id = `${userId}-renewed`;
+		const candidate = await createFixture(id);
+		const now = new Date();
+		await db.collection<{ _id: string }>('workspaces').updateOne(
+			{ _id: id }, { $set: { updatedAt: new Date(now.getTime() - INACTIVE_MS - 1) } },
+		);
+		await updateWorkspace(id, { changedPaths: ['docs/renewed.mdx'] });
+		await sweepWorkspace(candidate._id, now, async () => assert.fail('A renewed workspace should not call GitHub'));
+		assert.deepEqual((await getWorkspace(id))?.changedPaths, ['docs/renewed.mdx']);
+	});
+
+	it('cleans up a closed PR before retrying any queued save', async () => {
+		const { sweepWorkspace } = await import('../tina/sweep');
+		const id = `${userId}-closed-pending`;
+		await createFixture(id, { state: 'submitted' });
+		await updateWorkspace(id, {
+			prNumber: 123,
+			pendingCommit: true,
+			pendingOps: [{ op: 'put', path: 'docs/a.mdx', content: 'old' }],
+		});
+		const state: MockState = { requests: [], mode: 'pr-closed', sha: 0 };
+		globalThis.fetch = createGithubMock(state) as typeof fetch;
+		await sweepWorkspace(id, new Date(), async () => ({ login, token: 'mock-token', scopes: [] }));
+		assert.equal(await getWorkspace(id), null);
+		assert.ok(!state.requests.some(({ method }) => method === 'POST'));
 	});
 });

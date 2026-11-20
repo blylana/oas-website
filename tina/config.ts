@@ -2,6 +2,7 @@ import { Clerk } from '@clerk/clerk-js';
 import { ui } from '@clerk/ui';
 import { ClerkAuthProvider } from 'tinacms-clerk/dist/tinacms';
 import { defineConfig, LocalAuthProvider } from 'tinacms';
+import { installAdminRequests } from './admin-requests';
 
 const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
 const clerk = new Clerk(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '');
@@ -24,6 +25,12 @@ function writeClerkTokenCookie(value?: string) {
 if (typeof window !== 'undefined') {
   const loadClerk = clerk.load.bind(clerk);
   clerk.load = (options = {}) => loadClerk({ ui, ...options });
+  if (!isLocal) {
+    installAdminRequests(async () => {
+      await clerk.load({ ui });
+      return clerk.session?.getToken();
+    });
+  }
   const syncClerkToken = async () => {
     await clerk.load({ ui });
     // 加载 Clerk；

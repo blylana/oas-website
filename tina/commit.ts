@@ -48,6 +48,9 @@ export async function commitOps(
 	const changedPaths = new Set([...(workspace.changedPaths ?? []), ...deduped.map((op) => op.path)]);
 
 	try {
+		if (!workspace.branch.startsWith('oas-draft-')) {
+			throw new GithubApiError(409, 'The workspace uses a legacy branch');
+		}
 		let commitBase = workspace.baseSha;
 		if (!commitBase) {
 			commitBase = (await getRefSha(identity.token, owner, repo, baseBranch)) ?? undefined;
@@ -62,6 +65,7 @@ export async function commitOps(
 			login: identity.login,
 			branch: workspace.branch,
 			baseSha: commitBase,
+			expectedHead: workspace.headSha,
 			message: commitMessage(deduped),
 			changes,
 		});

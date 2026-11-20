@@ -11,6 +11,7 @@ import { deleteDraft } from './tenant';
 import { getWorkspace, updateWorkspace, INACTIVE_MS, type Workspace } from './workspace';
 import { getRequestContext } from './context';
 import { logger } from './logger';
+import { assertEditRevision, EDIT_REVISION_HEADER, invalidateEditRevision } from './edit-revision';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -108,36 +109,27 @@ export function createTinaApi(options: Options) {
 		'/api/tina/workspace',
 		route(async (req, res) => {
 			const identity = await authenticate(options, req);
-			const workspace = await getWorkspace(identity.userId);
-
-			let current = workspace;
-			if (workspace && identity.token) {
+			let current = await getWorkspace(identity.userId);
+			if (current && identity.token && current.login === identity.login &&
+				(current.prNumber || current.state === 'closed' || current.state === 'merged' ||
+					Date.now() - current.updatedAt.getTime() > INACTIVE_MS)) {
 				try {
-					current = await syncPrState(workspace, identity.token);
+					current = await withLock(identity.userId, async () => {
+						const workspace = await getWorkspace(identity.userId);
+						if (!workspace || workspace.login !== identity.login || workspace.purging) return workspace;
+						const synced = await syncPrState(workspace, identity.token!);
+						const expired = !synced.prNumber && Date.now() - synced.updatedAt.getTime() > INACTIVE_MS;
+						if (synced.state === 'merged' || synced.state === 'closed' || expired) {
+							const result = await purgeWorkspace(synced, identity.token!);
+							return result === 'pending' ? await getWorkspace(identity.userId) : null;
+						}
+						return synced;
+					});
 				} catch (error) {
-					logger.warn('tina.pr.status_check_failed', { error });
-				}
-				if (
-					current &&
-					!current.purging &&
-					(current.state === 'merged' || current.state === 'closed')
-				) {
-					const target = current;
-					void withLock(target._id, () => purgeWorkspace(target, identity.token!)).catch((error) =>
-						logger.error('tina.workspace.lazy_purge_failed', { error }),
-					);
-				}
-
-				if (
-					current &&
-					!current.prNumber &&
-					Date.now() - current.updatedAt.getTime() > INACTIVE_MS
-				) {
-					const target = current;
-					const purged = await withLock(target._id, () =>
-						purgeWorkspace(target, identity.token!),
-					);
-					current = purged === 'pending' ? await getWorkspace(identity.userId) : null;
+					if (!(error instanceof HttpError && error.code === 'workspace_busy')) {
+						logger.warn('tina.pr.status_check_failed', { error });
+					}
+					current = await getWorkspace(identity.userId);
 				}
 			}
 
@@ -157,9 +149,10 @@ export function createTinaApi(options: Options) {
 			}
 
 			const workspace = await withLock(identity.userId, async () => {
+				await assertEditRevision(identity.userId, req.get(EDIT_REVISION_HEADER));
 				let current = await getWorkspace(identity.userId);
 				if (!current) throw new HttpError(409, 'no_changes', 'Save your changes before submitting');
-				if (current.state === 'merged' || current.state === 'closed') {
+				if (current.purging || current.state === 'merged' || current.state === 'closed') {
 					throw new HttpError(409, 'stale_workspace', 'This workspace is already finished');
 				}
 				if (current.login !== identity.login) {
@@ -247,12 +240,17 @@ export function createTinaApi(options: Options) {
 					await deleteDraft(identity.userId);
 					return 'done';
 				}
+				await assertEditRevision(identity.userId, req.get(EDIT_REVISION_HEADER));
+				if (identity.login && workspace.login !== identity.login) {
+					throw new HttpError(409, 'login_changed', '请重新连接创建此草稿的 GitHub 账号。');
+				}
 				if (!identity.token) {
 					await updateWorkspace(identity.userId, {
 						purging: true,
 						state: 'closed',
 						closedAt: new Date(),
 					});
+					await invalidateEditRevision(identity.userId);
 					await deleteDraft(identity.userId);
 					return 'pending';
 				}

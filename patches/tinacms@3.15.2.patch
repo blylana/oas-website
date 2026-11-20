@@ -1,42 +1,45 @@
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -18177,6 +18177,64 @@
+@@ -18177,6 +18177,102 @@
      "Reset"
    ))));
  };
-+const ReviewControls = ({ onSave, pristine, submitting }) => {
++const ReviewControls = ({ onSave, canSave, pristine, submitting }) => {
 +  const [workspace, setWorkspace] = React.useState(null);
 +  const [github, setGithub] = React.useState(null);
 +  const [busy, setBusy] = React.useState(false);
 +  const [error, setError] = React.useState(null);
++  const loadId = React.useRef(0);
 +  const load = React.useCallback(async () => {
 +    try {
-+      const response = await fetch("/api/tina/workspace", { credentials: "include" });
++      const id = ++loadId.current;
++      const response = await fetch("/api/tina/workspace", { credentials: "include", cache: "no-store" });
 +      if (!response.ok) return;
 +      const data = await response.json();
++      if (id !== loadId.current) return;
 +      setWorkspace(data.workspace);
 +      setGithub(data.github || null);
 +    } catch (e) {
 +    }
 +  }, []);
 +  React.useEffect(() => {
-+    load();
 +    const timer = setInterval(load, 3e4);
 +    return () => clearInterval(timer);
 +  }, [load]);
++  React.useEffect(() => {
++    if (!submitting) void load();
++  }, [load, submitting]);
 +  const submit = async () => {
 +    setBusy(true);
 +    setError(null);
 +    try {
-+      if (!pristine) {
-+        const result = await onSave();
-+        if (result && result[FORM_ERROR]) {
-+          throw new Error(typeof result[FORM_ERROR] === "string" ? result[FORM_ERROR] : "\u4fdd\u5b58\u5931\u8d25");
-+        }
++      if (!pristine && !await onSave()) {
++        throw new Error("\u8bf7\u5148\u4fee\u6b63\u8868\u5355\u5e76\u6210\u529f\u4fdd\u5b58\u3002");
 +      }
 +      const response = await fetch("/api/tina/submit", { method: "POST", credentials: "include" });
 +      const data = await response.json();
 +      if (!response.ok) throw new Error(data.message || "\u63d0\u4ea4\u5931\u8d25");
++      ++loadId.current;
 +      setWorkspace(data.workspace);
 +    } catch (e) {
 +      setError(e.message);
@@ -45,7 +48,7 @@
 +    }
 +  };
 +  const discard = async () => {
-+    if (!window.confirm("\u786e\u5b9a\u653e\u5f03\u672c\u6b21\u6240\u6709\u4fee\u6539\uff1f\u5206\u652f\u548c PR \u4f1a\u88ab\u5220\u9664\u3002")) return;
++    if (!window.confirm("\u786e\u5b9a\u6e05\u7406\u672c\u6b21\u8349\u7a3f\u3001\u5173\u95ed PR \u5e76\u5220\u9664 Tina \u7ba1\u7406\u7684\u5206\u652f\uff1f")) return;
 +    setBusy(true);
 +    setError(null);
 +    try {
@@ -59,18 +62,53 @@
 +    }
 +  };
 +  const authMissing = github && github.error;
-+  const label = !workspace ? "\u672a\u63d0\u4ea4" : (workspace.state === "submitted" ? "PR #" + workspace.prNumber + " \u5f85\u5ba1\u6838" : workspace.state === "editing" ? "\u8349\u7a3f" : workspace.state === "merged" ? "\u5df2\u5408\u5e76" : workspace.state === "closed" ? "\u5df2\u5173\u95ed" : "\u672a\u63d0\u4ea4") + (workspace.branch ? " \u00b7 " + workspace.branch : "");
-+  return React.createElement(React.Fragment, null, React.createElement(Button$2, { onClick: submit, disabled: busy || submitting, variant: "secondary", size: "small", title: "提交审核", "aria-label": "提交审核" }, busy ? "\u5904\u7406\u4e2d\u2026" : "Pr"), React.createElement(Button$2, { onClick: discard, disabled: busy || submitting, variant: "secondary", size: "small", title: "清理当前修改", "aria-label": "清理当前修改" }, "Clean"), React.createElement("div", { className: "flex flex-col items-end justify-center text-xs text-gray-600 leading-tight", title: workspace ? (workspace.fork || "") + " / " + (workspace.branch || "") : void 0 }, authMissing ? React.createElement("a", { href: "#", onClick: (event) => { event.preventDefault(); window.__OAS_CONNECT_GITHUB__ && window.__OAS_CONNECT_GITHUB__(); }, className: "text-blue-600 hover:underline" }, "\u91cd\u65b0\u6388\u6743 GitHub") : workspace && workspace.prUrl ? React.createElement("a", { href: workspace.prUrl, target: "_blank", rel: "noreferrer", className: "text-blue-600 hover:underline" }, label) : React.createElement("span", null, label), error ? React.createElement("span", { className: "text-red-500 max-w-[220px] truncate", title: error }, error) : null));
++  const stateLabel = {
++    editing: "\u8349\u7a3f",
++    submitted: "PR #" + workspace?.prNumber + " \u5f85\u5ba1\u6838",
++    merged: "\u5df2\u5408\u5e76",
++    closed: "\u5df2\u5173\u95ed"
++  };
++  let label = stateLabel[workspace?.state] ?? "\u672a\u63d0\u4ea4";
++  if (workspace?.branch) label += " \u00b7 " + workspace.branch;
++  if (workspace?.pendingCommit) label = "\u8349\u7a3f\u5df2\u4fdd\u5b58\uff0cGitHub \u63d0\u4ea4\u5f85\u91cd\u8bd5";
++  if (workspace?.purging) label = "\u6e05\u7406\u5f85\u91cd\u8bd5";
++  const linkClass = "text-blue-600 hover:underline";
++  const status = authMissing
++    ? React.createElement("a", {
++        href: "#", className: linkClass,
++        onClick: (event) => { event.preventDefault(); window.__OAS_CONNECT_GITHUB__?.(); }
++      }, "\u91cd\u65b0\u6388\u6743 GitHub")
++    : workspace?.prUrl
++    ? React.createElement("a", {
++        href: workspace.prUrl, target: "_blank", rel: "noreferrer", className: linkClass
++      }, label)
++    : React.createElement("span", null, label);
++  return React.createElement(React.Fragment, null,
++    React.createElement(Button$2, {
++      onClick: submit, disabled: busy || submitting || (!pristine && !canSave),
++      variant: "secondary", size: "small", title: "\u63d0\u4ea4\u5ba1\u6838"
++    }, "Pr"),
++    React.createElement(Button$2, {
++      onClick: discard, disabled: busy || submitting,
++      variant: "secondary", size: "small", title: "\u6e05\u7406\u5f53\u524d\u4fee\u6539"
++    }, "Clean"),
++    React.createElement("div", {
++      className: "flex flex-col items-end justify-center text-xs text-gray-600 leading-tight",
++      style: { minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" },
++      title: workspace ? workspace.fork + " / " + workspace.branch : void 0
++    }, status, error ? React.createElement("span", {
++      className: "text-red-500 max-w-[220px] truncate", title: error
++    }, error) : null));
 +};
  const NoFieldsPlaceholder = () => /* @__PURE__ */ React.createElement(
    "div",
    {
-@@ -18414,10 +18472,11 @@
+@@ -18414,10 +18510,11 @@
            activeFieldName: form.activeFieldName,
            fields: fieldGroup.fields
          }
 -      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full h-16 px-6 bg-white border-t border-gray-100 flex items-center justify-end" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-end gap-2	flex items-center max-w-form" }, tinaForm.reset && /* @__PURE__ */ React.createElement(
-+      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full h-16 px-6 bg-white border-t border-gray-100 flex items-center justify-start" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-start gap-1	flex items-center max-w-form" }, tinaForm.reset && /* @__PURE__ */ React.createElement(
++      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full min-h-16 px-6 py-2 bg-white border-t border-gray-100 flex items-center justify-start", style: { maxWidth: "100vw" } }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-start gap-1 flex flex-wrap items-center max-w-form", style: { maxWidth: "calc(100vw - 48px)" } }, tinaForm.reset && /* @__PURE__ */ React.createElement(
          ResetForm,
          {
            pristine,
@@ -78,7 +116,7 @@
            reset: async () => {
              finalForm.reset();
              await tinaForm.reset();
-@@ -18431,10 +18490,11 @@
+@@ -18431,10 +18528,18 @@
            onClick: safeHandleSubmit,
            disabled: !canSubmit || isGuardChecking,
            busy: submitting,
@@ -87,7 +125,14 @@
          },
          tinaForm.buttons.save
 -      ), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
-+      ), /* @__PURE__ */ React.createElement(ReviewControls, { onSave: handleSubmit, pristine, submitting }), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
++      ), /* @__PURE__ */ React.createElement(ReviewControls, { onSave: async () => {
++        if (!canSubmit || finalForm.getState().validating) return false;
++        const receipt = window.__OAS_SAVE_RECEIPT__;
++        const result = await handleSubmit();
++        const state = finalForm.getState();
++        return receipt !== window.__OAS_SAVE_RECEIPT__ && !result?.[FORM_ERROR] &&
++          state.submitSucceeded && !state.submitFailed && !state.dirtySinceLastSubmit;
++      }, canSave: canSubmit, pristine, submitting }), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
          FormActionMenu,
          {
            form: tinaForm,

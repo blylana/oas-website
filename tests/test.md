@@ -48,7 +48,7 @@
 - [x] A5.4 首次保存能确保用户 fork 和用户分支存在，结果：`PASS`
 - [x] A5.5 tree/blob/commit/ref API 按正确顺序调用，结果：`PASS`
 - [x] A5.6 删除文件使用 Git tree 的删除表示，结果：`PASS`
-- [x] A5.7 ref 冲突时重新读取 head 并重试，结果：`PASS`
+- [x] A5.7 远端分支与记录的 head 不同时，保存保留待提交内容，Clean 保留远端分支，结果：`PASS`
 - [x] A5.8 GitHub 暂时失败时保存 draft，并记录 pending commit，结果：`PASS`
 - [x] A5.9 下次保存或 sweep 能重试 pending commit，结果：`PASS`
 - [x] A5.10 成功 commit 后 workspace 更新 head SHA、changed paths 和 pending 状态，结果：`PASS`
@@ -109,7 +109,7 @@
 
 - [x] B3.1 点击 Pr 会先保存 dirty 表单，再调用 `/api/tina/submit`，结果：`PASS`
 - [x] B3.2 Pr 成功后状态显示 PR 编号或审核状态，结果：`PASS`
-- [ ] B3.3 重复点击 Pr 不创建重复 PR，结果：`TODO`
+- [x] B3.3 重复点击 Pr 不创建重复 PR，结果：`PASS`（仍使用测试 PR #3）
 - [x] B3.4 点击 Clean 弹出放弃修改确认框，结果：`PASS`
 - [x] B3.5 Clean 取消后保留当前修改，结果：`PASS`
 - [x] B3.6 Clean 确认后刷新页面并恢复 main 内容，结果：`PASS`
@@ -142,3 +142,12 @@
 | 2026-11-20 | 静态页、服务端口、匿名认证 | PASS | 4321/4322/27017 监听，页面 200，匿名 Tina API 401 |
 | 2026-11-20 | Reset / Save / Clean 浏览器流程 | PASS | Reset 确认恢复，Save commit 成功，Clean 确认后 workspace 和分支清理 |
 | 2026-11-20 | Pr 提交审核与 Clean 回收 | PASS | 创建临时 PR #1，状态为 submitted，状态链接显示后用 Clean 关闭 PR、删除分支和 workspace |
+
+## 审查修复回归
+
+- `pnpm exec tsx --test tests/*.test.ts`：14 项通过，覆盖 GraphQL 操作分类、旧编辑页拦截、远端分支冲突、清理失败重试、已续期工作区和关闭 PR 后的待提交内容。
+- Chrome：标题为空时 Save 和 Pr 均禁用。有效编辑先保存到独立草稿分支，再创建 PR #3。重复点击复用同一 PR。Clean 关闭测试 PR 并清理草稿。
+- Chrome 双标签：Clean 之后，另一标签旧表单保存时提示刷新，工作区保持为空。
+- Chrome：去掉请求 Cookie 后，workspace 和 Clean 仍返回 200，空草稿的 Pr 返回 409 `no_changes`。
+- Chrome：320 px 视口中，底栏右缘为 320 px，四个按钮和未提交状态均在视口内。
+- 本地索引：用 `scripts/reindex-main.ts origin/tina` 重建并激活已发布索引。Chrome 刷新后文档描述回到已发布的空值。

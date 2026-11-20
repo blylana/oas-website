@@ -1,7 +1,8 @@
-import { closePull, deleteBranch } from './github';
+import { closePull, deleteBranch, getRefSha, GithubApiError } from './github';
 import { deleteDraft } from './tenant';
 import { deleteWorkspace, updateWorkspace, type Workspace } from './workspace';
 import { logger } from './logger';
+import { invalidateEditRevision } from './edit-revision';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -14,26 +15,36 @@ export type PurgeResult = 'done' | 'pending';
  * with `purging` set so the sweep retries later.
  */
 export async function purgeWorkspace(workspace: Workspace, token: string): Promise<PurgeResult> {
+	if (!workspace.purging) await updateWorkspace(workspace._id, { purging: true });
+	await invalidateEditRevision(workspace._id);
+	let pending = false;
 	if (workspace.prNumber) {
 		try {
 			await closePull(token, owner, repo, workspace.prNumber);
 		} catch (error) {
-			// A missing PR is fine; anything else is retried by the sweep.
-			logger.warn('tina.workspace.close_pr_failed', { error, prNumber: workspace.prNumber });
+			if (!(error instanceof GithubApiError && error.status === 404)) {
+				pending = true;
+				logger.warn('tina.workspace.close_pr_failed', { error, prNumber: workspace.prNumber });
+			}
 		}
 	}
 
-	let branchDeleted = true;
 	try {
-		await deleteBranch(token, workspace.login, repo, workspace.branch);
+		const head = await getRefSha(token, workspace.login, repo, workspace.branch);
+		if (head !== null && head === workspace.headSha && workspace.login.toLowerCase() !== owner.toLowerCase()
+			&& workspace.branch.startsWith('oas-draft-')) {
+			await deleteBranch(token, workspace.login, repo, workspace.branch);
+		} else if (head !== null) {
+			logger.warn('tina.workspace.unowned_branch_preserved', { branch: workspace.branch });
+		}
 	} catch (error) {
-		branchDeleted = false;
+		pending = true;
 		logger.warn('tina.workspace.delete_branch_failed', { error, branch: workspace.branch });
 	}
 
 	await deleteDraft(workspace._id);
 
-	if (!branchDeleted) {
+	if (pending) {
 		await updateWorkspace(workspace._id, { purging: true, state: 'closed', closedAt: new Date() });
 		return 'pending';
 	}

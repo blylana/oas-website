@@ -45,7 +45,7 @@ export function ClerkBackendAuthenticationForAstro({
 				?.slice('tina_clerk_token='.length);
 			const requestState = await clerk.authenticateRequest({
 				request,
-				...(cookieToken ? { headerToken: decodeURIComponent(cookieToken) } : {}),
+				...(cookieToken && !headers.has('authorization') ? { headerToken: decodeURIComponent(cookieToken) } : {}),
 			});
 
 			if (requestState.status === 'signed-in') {

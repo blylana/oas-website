@@ -1,21 +1,23 @@
+import { randomUUID } from 'node:crypto';
 import { getRefSha } from './github';
 import { HttpError } from './http-error';
 import type { RequestContext } from './context';
-import { cloneDraft, deleteDraft } from './tenant';
+import { cloneDraft } from './tenant';
 import { clearGithubIdentity } from './github-identity';
 import { syncPrState } from './pr-sync';
-import { createWorkspace, deleteWorkspace, getWorkspace, touchWorkspace, updateWorkspace, INACTIVE_MS, type Workspace } from './workspace';
+import { createWorkspace, getWorkspace, touchWorkspace, INACTIVE_MS, type Workspace } from './workspace';
 import { purgeWorkspace } from './purge';
 import { logger } from './logger';
+import { staleEditor } from './edit-revision';
+import { getPublishedIndex } from './published-index';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
 const baseBranch = process.env.GITHUB_BRANCH || 'tina';
 
-async function newWorkspace(ctx: RequestContext): Promise<Workspace> {
-	let baseSha: string | undefined;
+async function newWorkspace(ctx: RequestContext, baseSha?: string): Promise<Workspace> {
 	try {
-		baseSha = (await getRefSha(ctx.githubToken!, owner, repo, baseBranch)) ?? undefined;
+		baseSha ??= (await getRefSha(ctx.githubToken!, owner, repo, baseBranch)) ?? undefined;
 	} catch (error) {
 		// GitHub may be down; the save still writes the draft and the commit is
 		// retried later once the base commit can be resolved.
@@ -25,45 +27,34 @@ async function newWorkspace(ctx: RequestContext): Promise<Workspace> {
 		userId: ctx.userId!,
 		login: ctx.login!,
 		fork: `${ctx.login}/${repo}`,
-		branch: ctx.login!,
+		branch: `oas-draft-${randomUUID()}`,
 		baseBranch,
 		baseSha,
 	});
 }
 
-export async function prepareWrite(ctx: RequestContext): Promise<Workspace> {
+export async function prepareWrite(ctx: RequestContext, published?: Awaited<ReturnType<typeof getPublishedIndex>>): Promise<Workspace> {
 	if (!ctx.userId) {
 		throw new HttpError(401, 'unauthorized', 'Missing Clerk user');
 	}
 	if (!ctx.login || !ctx.githubToken) {
 		throw new HttpError(401, 'github_reauth', 'GitHub access is missing or expired; re-authorize');
 	}
+	published ??= await getPublishedIndex();
 
 	let workspace = await getWorkspace(ctx.userId);
 
 	if (workspace && workspace.login !== ctx.login) {
 		clearGithubIdentity(ctx.userId);
-		// The old branch lives in another account's fork and cannot be deleted
-		// with the new token. Try once, then drop the local state regardless.
-		try {
-			await purgeWorkspace(workspace, ctx.githubToken);
-		} catch (error) {
-			logger.error('tina.workspace.login_change_cleanup_failed', { error });
-		}
-		await deleteWorkspace(ctx.userId);
-		await deleteDraft(ctx.userId);
-		workspace = null;
+		throw new HttpError(409, 'login_changed', '请重新连接创建此草稿的 GitHub 账号。');
 	}
 
-	// A closed or merged PR means "discard everything"; do that before this save
-	// writes anything new, as required for the next request after the close.
-	if (workspace?.prNumber) {
+	if (workspace?.prNumber && !workspace.purging) {
 		try {
 			workspace = await syncPrState(workspace, ctx.githubToken);
 		} catch (error) {
-			// A transient GitHub failure must not lose the save; the sweep will
-			// detect the final PR state later.
 			logger.warn('tina.pr.save_time_sync_failed', { error });
+			throw new HttpError(502, 'pr_status_unavailable', '暂时无法确认 PR 状态，请稍后重试保存。');
 		}
 	}
 
@@ -75,11 +66,11 @@ export async function prepareWrite(ctx: RequestContext): Promise<Workspace> {
 		if (purged === 'pending') {
 			throw new HttpError(409, 'purging', 'The previous workspace is still being cleaned up');
 		}
-		workspace = null;
+		throw staleEditor();
 	}
 
 	if (!workspace) {
-		workspace = await newWorkspace(ctx);
+		workspace = await newWorkspace(ctx, published.sha);
 	}
 
 	// Expire idle drafts lazily even if the periodic sweep has not run yet.
@@ -88,21 +79,19 @@ export async function prepareWrite(ctx: RequestContext): Promise<Workspace> {
 		if (purged === 'pending') {
 			throw new HttpError(409, 'purging', 'The expired workspace is still being cleaned up');
 		}
-		workspace = await newWorkspace(ctx);
+		throw staleEditor();
+	}
+	if (!workspace.branch.startsWith('oas-draft-')) {
+		throw new HttpError(409, 'legacy_branch', '此草稿使用旧版分支。请先完成已有 PR，或在 GitHub 保留改动后使用 Clean 开始新草稿。');
 	}
 
-	await cloneDraft(ctx.userId);
+	await cloneDraft(ctx.userId, published.namespace);
 	ctx.namespace = `draft:${ctx.userId}`;
 	if (workspace.pendingOps?.length) {
 		// Retry commits that failed on the previous save, then apply this save on top.
 		ctx.buffer = [...workspace.pendingOps];
 	}
 
-	// Keep `submitted` when a PR is already open: later saves update the same PR
-	// and must still be checked for merge/close by the sweep.
-	if (!workspace.prNumber) {
-		await updateWorkspace(ctx.userId, { state: 'editing' });
-	}
 	await touchWorkspace(ctx.userId);
 	return workspace;
 }

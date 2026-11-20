@@ -42,6 +42,16 @@ pnpm start
 
 后端日志以 JSON 输出到标准输出，默认级别为 `info`。可通过 `LOG_LEVEL=debug|info|warn|error|fatal` 调整级别；每个请求都会返回 `x-request-id`，便于和服务端日志关联。
 
+部署已发布文档时，在对应 Git 版本上完成构建后刷新 Tina 的编辑基准：
+
+```bash
+pnpm exec tsx scripts/reindex-main.ts <published-commit>
+```
+
+命令先构建和检查新的 MongoDB 索引，随后切换编辑基准。已有草稿保留原来的基准。
+
+新版 Tina 草稿使用 `oas-draft-*` 分支。若旧草稿使用 GitHub 登录名作为分支名，可以先完成已有 PR，或在 GitHub 保留原有改动后通过 Clean 开始新草稿。Clean 会保留这些旧分支和已在 Tina 外修改的分支。
+
 ```bash
 caddy run --config .\Caddyfile
 ```

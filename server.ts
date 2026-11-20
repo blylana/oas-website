@@ -17,6 +17,10 @@ import { HttpError } from './tina/http-error';
 import { createTinaApi } from './tina/api';
 import { startSweep } from './tina/sweep';
 import { logger } from './tina/logger';
+import { getOperationType } from './tina/graphql-operation';
+import { assertEditRevision, EDIT_REVISION_HEADER, getEditRevision } from './tina/edit-revision';
+import { getWorkspace } from './tina/workspace';
+import { getPublishedIndex } from './tina/published-index';
 
 // Astro's generated entry can start its own listener unless this is disabled
 // before importing it. Express owns the production listener in this setup.
@@ -36,7 +40,13 @@ function requestIdFrom(req: express.Request) {
 
 app.use((req, res, next) => {
 	const requestId = requestIdFrom(req);
-	const context: RequestContext = { requestId, buffer: [] };
+	const context: RequestContext = {
+		requestId,
+		buffer: [],
+		editRevision: req.get(EDIT_REVISION_HEADER),
+		setEditRevision: (revision) => res.setHeader(EDIT_REVISION_HEADER, revision),
+		markSaveReceived: () => res.setHeader('x-oas-save-received', 'true'),
+	};
 	const startedAt = performance.now();
 	let completed = false;
 
@@ -95,7 +105,6 @@ const authProvider = isLocal
 				const userId = req.session?.user?.id;
 				if (store && userId) {
 					store.userId = userId;
-					store.namespace = (await hasDraft(userId)) ? `draft:${userId}` : 'main';
 					try {
 						const identity = await getGithubIdentity(userId);
 						store.login = identity.login;
@@ -119,33 +128,44 @@ const guardedClient = {
 	...databaseClient,
 	request: async (args: any) => {
 		const ctx = requestContext.getStore();
-		// Tina prefixes browser mutations with a `#graphql` comment. Remove
-		// GraphQL comments before checking the operation type, otherwise saves
-		// bypass the draft/commit path and only update the data layer.
-		const query = String(args.query ?? '').replace(/^\s*#.*$/gm, '').trim();
-		const isMutation = /^mutation(?:\s|\{|\()/i.test(query);
-		if (!ctx?.userId || !isMutation) {
-			return databaseClient.request(args);
-		}
+		if (isLocal) return databaseClient.request(args);
 
 		// 限制同一个用户的保存频率，防止重复点击、脚本请求或异常重试造成大量写入
 		// 加锁
 		// 准备工作区、目标分支、GitHub 身份等写入信息。
 		// 成功后提交 flushCommit
 		try {
+			const operation = getOperationType(args.query);
+			if (!ctx?.userId) throw new HttpError(401, 'unauthorized', 'Missing Clerk user');
+			if (operation !== 'mutation') {
+				const published = await getPublishedIndex();
+				const revision = await getEditRevision(ctx.userId, published.namespace);
+				const workspace = await getWorkspace(ctx.userId);
+				ctx.namespace = workspace && !workspace.purging && workspace.state !== 'closed' &&
+					workspace.state !== 'merged' && (await hasDraft(ctx.userId)) ? `draft:${ctx.userId}` : published.namespace;
+				const result = await databaseClient.request(args);
+				ctx.setEditRevision?.(revision);
+				return result;
+			}
 			await enforceRateLimit(ctx.userId, 'save:min');
 			return await withLock(ctx.userId, async () => {
-				const workspace = await prepareWrite(ctx);
+				const published = await getPublishedIndex();
+				await assertEditRevision(ctx.userId!, ctx.editRevision, published.namespace);
+				const workspace = await prepareWrite(ctx, published);
 				const result = await databaseClient.request(args);
 				const errors = (result as { errors?: unknown[] | null }).errors;
-				if (!errors || (Array.isArray(errors) && errors.length === 0)) {
+				if (result.data && (!errors || (Array.isArray(errors) && errors.length === 0))) {
 					const commit = await flushCommit(ctx, workspace);
 					logger.info('tina.save.completed', {
 						bufferedOps: ctx.buffer?.length ?? 0,
-						changedPaths: workspace.changedPaths?.length ?? 0,
 						committed: commit.committed,
 						...(commit.sha ? { sha: commit.sha } : {}),
 					});
+					ctx.setEditRevision?.(ctx.editRevision!);
+					ctx.markSaveReceived?.();
+					if (commit.error) {
+						return { ...result, extensions: { oasCommitPending: true } };
+					}
 				} else {
 					ctx.buffer = [];
 					logger.warn('tina.save.graphql_failed', {

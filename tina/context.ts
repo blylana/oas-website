@@ -13,6 +13,9 @@ export type RequestContext = {
 	githubToken?: string;
 	githubError?: string;
 	namespace?: string;
+	editRevision?: string;
+	setEditRevision?: (revision: string) => void;
+	markSaveReceived?: () => void;
 	buffer?: BufferedOp[];
 };
 

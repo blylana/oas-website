@@ -100,6 +100,9 @@ export async function ensureFork(input: {
 }): Promise<string> {
 	const { token, owner, repo, login } = input;
 	const fullName = `${login}/${repo}`;
+	if (login.toLowerCase() === owner.toLowerCase()) {
+		throw new GithubApiError(409, 'The upstream owner cannot use the upstream repository as a fork');
+	}
 	if (forkCache.has(fullName)) return fullName;
 
 	const existing = await getRepo(token, login, repo);
@@ -193,23 +196,10 @@ export async function createOrFastForwardRef(input: {
 		return;
 	}
 
-	const update = async () =>
-		call(token, 'PATCH', `/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
-			sha,
-			force: false,
-		});
-
-	try {
-		await update();
-	} catch (error) {
-		if (error instanceof GithubApiError && error.status === 422) {
-			// The fork may be behind upstream and not know the parent commit yet.
-			if (onConflict) await onConflict();
-			await update();
-			return;
-		}
-		throw error;
-	}
+	await call(token, 'PATCH', `/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
+		sha,
+		force: false,
+	});
 }
 
 export type TreeEntry = {
@@ -227,19 +217,23 @@ export async function commitFiles(input: {
 	login: string;
 	branch: string;
 	baseSha?: string;
+	expectedHead?: string;
 	message: string;
 	changes: { path: string; content?: string; delete?: boolean }[];
 }): Promise<{ sha: string; changedPaths: string[] }> {
-	const { token, owner, repo, login, branch, baseSha, message, changes } = input;
+	const { token, owner, repo, login, branch, baseSha, expectedHead, message, changes } = input;
 
 	await ensureFork({ token, owner, repo, login });
 
 	const parentSha = await getRefSha(token, login, repo, branch);
-	if (!parentSha && !baseSha) {
+	if (parentSha !== null && parentSha !== expectedHead) {
+		throw new GithubApiError(409, 'Draft branch differs from the last recorded commit');
+	}
+	if (!parentSha && !expectedHead && !baseSha) {
 		throw new GithubApiError(409, 'Branch does not exist and no base commit was recorded');
 	}
 
-	const parent = parentSha ?? baseSha!;
+	const parent = parentSha ?? expectedHead ?? baseSha!;
 	let parentCommit: { tree: { sha: string } };
 	try {
 		parentCommit = await call<{ tree: { sha: string } }>(
@@ -348,7 +342,7 @@ export async function deleteBranch(token: string, owner: string, repo: string, b
 	try {
 		await call(token, 'DELETE', `/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`);
 	} catch (error) {
-		if (error instanceof GithubApiError && (error.status === 404 || error.status === 422)) return;
+		if (error instanceof GithubApiError && error.status === 404) return;
 		throw error;
 	}
 }
