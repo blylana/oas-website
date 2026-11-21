@@ -9,7 +9,7 @@ pnpm install
 pnpm dev
 ```
 
-开发服务器默认运行在 `http://localhost:4321/`。构建生产版本：
+开发服务器默认运行在 `http://localhost:4321/`。构建生产版本： 
 
 ```bash
 pnpm build
