@@ -8,6 +8,8 @@ const hasTinaCloudCredentials = Boolean(
 const tinaArgs = ['exec', 'tinacms', 'build', '--skip-indexing'];
 if (!hasTinaCloudCredentials) tinaArgs.push('--local', '--skip-cloud-checks');
 
+process.env.TINA_BUILD_STATIC = '1';
+
 function run(args) {
 	const result = spawnSync(packageManager, args, {
 		stdio: 'inherit',

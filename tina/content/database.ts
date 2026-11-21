@@ -3,7 +3,11 @@ import { getRequestContext } from '../editor/context';
 import { getDb } from './tenant';
 
 const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
-const localDatabase = isLocal ? createLocalDatabase() : null;
+const useLocalDatabase =
+	isLocal ||
+	process.env.TINA_BUILD_STATIC === '1' ||
+	!process.env.MONGODB_URI;
+const localDatabase = useLocalDatabase ? createLocalDatabase() : null;
 
 /**
  * The generated `databaseClient` imports this module once, at build/startup
@@ -15,7 +19,7 @@ const database = new Proxy(
 	{
 		get(_target, property) {
 			const namespace = getRequestContext()?.namespace ?? 'main';
-			const db = isLocal ? localDatabase : getDb(namespace);
+			const db = useLocalDatabase ? localDatabase : getDb(namespace);
 			const value = (db as unknown as Record<string | symbol, unknown>)[property];
 			return typeof value === 'function' ? value.bind(db) : value;
 		},
