@@ -56,6 +56,92 @@ pnpm exec tsx scripts/reindex-main.ts <published-commit>
 caddy run --config .\Caddyfile
 ```
 
+## Cloudflare Pages + Docker 后端部署
+
+生产环境可以将公开文档部署到 Cloudflare Pages，将 Tina 后端和 MongoDB 部署到自己的服务器。
+
+### 1. Cloudflare Pages
+
+在 Cloudflare Pages 中配置：
+
+```text
+构建命令: pnpm install --frozen-lockfile && pnpm build
+输出目录: dist/client
+Node.js: 22
+```
+
+构建环境至少需要设置：
+
+```env
+TINA_PUBLIC_IS_LOCAL=false
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+GITHUB_BRANCH=tina
+```
+
+不要在 Cloudflare Pages 中设置 `CLERK_SECRET_KEY`、`MONGODB_URI` 或 GitHub 私密令牌。
+
+由于 Tina 的 API 使用相对路径，Cloudflare Pages 需要将以下路径代理到后端域名。把 `api.example.com` 替换成实际的后端域名，可以将规则保存为 `public/_redirects` 后再构建：
+
+```text
+/api/tina/* https://api.example.com/api/tina/:splat 200
+/tina-island/* https://api.example.com/tina-island/:splat 200
+```
+
+这样浏览器仍然以 Cloudflare Pages 域名访问 Tina，Cookie 和认证请求保持同源。
+
+### 2. Docker 后端
+
+先创建生产环境文件：
+
+```bash
+cp .env.production.example .env.production
+```
+
+填写真实的 Clerk、GitHub 和 MongoDB 配置，然后启动：
+
+```bash
+docker compose --env-file .env.production up -d --build
+```
+
+配置文件会启动两个独立容器：
+
+- `backend`：运行 `server.ts`、Tina API 和 Tina island 刷新接口
+- `mongo`：保存 Tina 索引、草稿、工作区、锁和限流数据
+
+MongoDB 数据保存在 `mongo_data` Volume 中，不会随着后端容器重建而丢失。MongoDB 只绑定在 Docker 网络中，后端端口只绑定到服务器本机的 `127.0.0.1:4322`。
+
+服务器上的 Caddy 可以参考 [docker/Caddyfile.example](docker/Caddyfile.example)，把 `api.example.com` 反向代理到 `127.0.0.1:4322`。
+
+查看状态和日志：
+
+```bash
+docker compose ps
+docker compose logs -f backend
+```
+
+备份数据库：
+
+```bash
+docker compose exec -T mongo mongodump \
+  --username "$MONGO_ROOT_USERNAME" \
+  --password "$MONGO_ROOT_PASSWORD" \
+  --authenticationDatabase admin \
+  --db tinacms \
+  --archive > tinacms-backup.archive
+```
+
+`MONGODB_URI` 中的用户名和密码如果包含 URI 保留字符，需要先进行 URL 编码。生产环境不要提交 `.env.production`。
+
+### 3. 发布后的 Tina 索引
+
+文档合并到 GitHub 并完成 Cloudflare Pages 发布后，在包含对应发布版本的工作区执行：
+
+```bash
+pnpm exec tsx scripts/reindex-main.ts <published-commit>
+```
+
+这会在 MongoDB 中建立新索引并切换到对应的发布版本。
+
 
 ## 内容结构
 

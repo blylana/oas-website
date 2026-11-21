@@ -1,0 +1,3 @@
+# Copy this file to public/_redirects and replace api.example.com.
+/api/tina/* https://api.example.com/api/tina/:splat 200
+/tina-island/* https://api.example.com/tina-island/:splat 200

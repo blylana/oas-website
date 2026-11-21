@@ -1,0 +1,4 @@
+# Run Caddy on the host and keep the backend bound to 127.0.0.1:4322.
+api.example.com {
+	 reverse_proxy 127.0.0.1:4322
+}
