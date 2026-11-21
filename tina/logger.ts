@@ -1,4 +1,4 @@
-import { getRequestContext } from './context';
+import { getRequestContext } from './editor/context';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 export type LogFields = Record<string, unknown>;

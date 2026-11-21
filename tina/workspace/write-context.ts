@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { getRefSha } from './github';
-import { HttpError } from './http-error';
-import type { RequestContext } from './context';
-import { cloneDraft } from './tenant';
-import { clearGithubIdentity } from './github-identity';
-import { syncPrState } from './pr-sync';
+import { getRefSha } from '../github/github';
+import { HttpError } from '../http-error';
+import type { RequestContext } from '../editor/context';
+import { cloneDraft } from '../content/tenant';
+import { clearGithubIdentity } from '../auth/github-identity';
+import { syncPrState } from '../pull-request/pr-sync';
 import { createWorkspace, getWorkspace, touchWorkspace, INACTIVE_MS, type Workspace } from './workspace';
 import { purgeWorkspace } from './purge';
-import { logger } from './logger';
-import { staleEditor } from './edit-revision';
-import { getPublishedIndex } from './published-index';
+import { logger } from '../logger';
+import { staleEditor } from '../editor/edit-revision';
+import { getPublishedIndex } from '../content/published-index';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -75,7 +75,7 @@ export async function prepareWrite(ctx: RequestContext, published?: Awaited<Retu
 
 	// Expire idle drafts lazily even if the periodic sweep has not run yet.
 	if (!workspace.prNumber && Date.now() - workspace.updatedAt.getTime() > INACTIVE_MS) {
-		const purged = await purgeWorkspace(workspace, ctx.githubToken);
+		const purged = await purgeWorkspace(workspace, ctx.githubToken, 'expired');
 		if (purged === 'pending') {
 			throw new HttpError(409, 'purging', 'The expired workspace is still being cleaned up');
 		}

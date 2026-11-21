@@ -1,8 +1,12 @@
+import type { statusLabels } from './status-labels';
+import type { derivePermissions } from '../permissions';
+
 // A revision belongs to the content this tab loaded. Polling the workspace must
 // not silently grant an old form permission to write into a new workspace.
 declare global {
 	interface Window {
 		__OAS_SAVE_RECEIPT__?: number;
+		__OAS_EDITOR__?: { derivePermissions: typeof derivePermissions; statusLabels: typeof statusLabels };
 	}
 }
 
@@ -25,7 +29,7 @@ export function installAdminRequests(getToken: () => Promise<string | null | und
 		if (revision) headers.set('x-oas-edit-revision', revision);
 		const response = await fetchRequest(input, { ...init, headers });
 		const observedRevision = response.headers.get('x-oas-edit-revision');
-		if (response.ok && observedRevision && revision === null) revision = observedRevision;
+		if (isGraphQL && response.ok && observedRevision && revision === null) revision = observedRevision;
 		if (response.ok && response.headers.get('x-oas-save-received') === 'true') {
 			window.__OAS_SAVE_RECEIPT__ = (window.__OAS_SAVE_RECEIPT__ ?? 0) + 1;
 		}

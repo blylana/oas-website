@@ -26,6 +26,7 @@ type MockState = {
 	mode: 'commit' | 'pending' | 'pr-merged' | 'pr-closed' | 'pr-404' | 'purge' | 'purge-pending' | 'close-pending';
 	sha: number;
 	head?: string;
+	files?: Record<string, string>;
 };
 
 function jsonResponse(status: number, value: unknown) {
@@ -68,6 +69,12 @@ function createGithubMock(state: MockState) {
 		}
 		if (method === 'GET' && path.startsWith(`/repos/${login}/${repo}/git/commits/`)) {
 			return jsonResponse(200, { tree: { sha: 'base-tree' } });
+		}
+		if (method === 'GET' && path.startsWith(`/repos/${login}/${repo}/contents/`)) {
+			const content = state.files?.[path];
+			return content === undefined
+				? jsonResponse(404, { message: 'file does not exist in the parent commit' })
+				: jsonResponse(200, { type: 'file', encoding: 'base64', content: Buffer.from(content).toString('base64') });
 		}
 		if (method === 'POST' && path === `/repos/${login}/${repo}/git/trees`) {
 			if (state.mode === 'pending') return jsonResponse(500, { message: 'mock tree failure' });
@@ -120,28 +127,28 @@ function createGithubMock(state: MockState) {
 
 const originalFetch = globalThis.fetch;
 let db: ReturnType<(typeof import('../tina/mongo'))['appDb']>;
-let getWorkspace: typeof import('../tina/workspace')['getWorkspace'];
-let createWorkspace: typeof import('../tina/workspace')['createWorkspace'];
-let updateWorkspace: typeof import('../tina/workspace')['updateWorkspace'];
-let acquireLock: typeof import('../tina/lock')['acquireLock'];
-let releaseLock: typeof import('../tina/lock')['releaseLock'];
-let enforceRateLimit: typeof import('../tina/ratelimit')['enforceRateLimit'];
-let commitOps: typeof import('../tina/commit')['commitOps'];
-let syncPrState: typeof import('../tina/pr-sync')['syncPrState'];
-let purgeWorkspace: typeof import('../tina/purge')['purgeWorkspace'];
+let getWorkspace: typeof import('../tina/workspace/workspace')['getWorkspace'];
+let createWorkspace: typeof import('../tina/workspace/workspace')['createWorkspace'];
+let updateWorkspace: typeof import('../tina/workspace/workspace')['updateWorkspace'];
+let acquireLock: typeof import('../tina/workspace/lock')['acquireLock'];
+let releaseLock: typeof import('../tina/workspace/lock')['releaseLock'];
+let enforceRateLimit: typeof import('../tina/workspace/ratelimit')['enforceRateLimit'];
+let commitOps: typeof import('../tina/github/commit')['commitOps'];
+let syncPrState: typeof import('../tina/pull-request/pr-sync')['syncPrState'];
+let purgeWorkspace: typeof import('../tina/workspace/purge')['purgeWorkspace'];
 let appDb: typeof import('../tina/mongo')['appDb'];
 let getMongo: typeof import('../tina/mongo')['getMongo'];
-let contentPrefix: typeof import('../tina/tenant')['contentPrefix'];
+let contentPrefix: typeof import('../tina/content/tenant')['contentPrefix'];
 
 before(async () => {
 	({ appDb, getMongo } = await import('../tina/mongo'));
-	({ getWorkspace, createWorkspace, updateWorkspace } = await import('../tina/workspace'));
-	({ acquireLock, releaseLock } = await import('../tina/lock'));
-	({ enforceRateLimit } = await import('../tina/ratelimit'));
-	({ commitOps } = await import('../tina/commit'));
-	({ syncPrState } = await import('../tina/pr-sync'));
-	({ purgeWorkspace } = await import('../tina/purge'));
-	({ contentPrefix } = await import('../tina/tenant'));
+	({ getWorkspace, createWorkspace, updateWorkspace } = await import('../tina/workspace/workspace'));
+	({ acquireLock, releaseLock } = await import('../tina/workspace/lock'));
+	({ enforceRateLimit } = await import('../tina/workspace/ratelimit'));
+	({ commitOps } = await import('../tina/github/commit'));
+	({ syncPrState } = await import('../tina/pull-request/pr-sync'));
+	({ purgeWorkspace } = await import('../tina/workspace/purge'));
+	({ contentPrefix } = await import('../tina/content/tenant'));
 	db = appDb();
 });
 
@@ -251,6 +258,36 @@ describe('backend persistence and GitHub mapping', () => {
 		assert.deepEqual(state.requests.filter((request) => request.method === 'POST' && request.path.endsWith('/git/commits')).at(-1)?.body?.parents, ['commit-2']);
 	});
 
+	it('commits a single MDX edit without rewriting the surrounding formatting', async () => {
+		const id = `${userId}-mdx-formatting`;
+		const workspace = await createFixture(id, { baseSha: 'indexed-commit' });
+		const path = 'src/content/docs/user-manual/getting-started.mdx';
+		const original = "---\ntitle: '开始'\n---\n\n<div align=\"center\">\n\n# OAS\n\n</div>\n\n把一切都交给 OAS。\n\n- 功能一\n- 功能二\n";
+		const edited = "---\ntitle: 开始\n---\n\n<div align=\"center\">\n  # OAS\n</div>\n\n把一切都交给 OAS。1111\n\n* 功能一\n* 功能二\n";
+		const files: Record<string, string> = { [`/repos/${login}/${repo}/contents/${path}?ref=indexed-commit`]: original };
+		const state: MockState = { requests: [], mode: 'commit', sha: 0, files };
+		globalThis.fetch = createGithubMock(state) as typeof fetch;
+		const result = await commitOps([{ op: 'put', path, content: edited }], workspace, {
+			userId: id, login, token: 'mock-token',
+		});
+		assert.equal(result.committed, true);
+		const expected = original.replace('OAS。', 'OAS。1111');
+		assert.deepEqual(state.requests.find(({ path }) => path.endsWith('/git/trees'))?.body?.tree, [
+			{ path, mode: '100644', type: 'blob', content: expected },
+		]);
+
+		const saved = await getWorkspace(id);
+		assert.ok(saved?.headSha);
+		files[`/repos/${login}/${repo}/contents/${path}?ref=${saved.headSha}`] = expected;
+		const next = await commitOps([{ op: 'put', path, content: edited.replace('title: 开始', 'title: 新标题') }], saved, {
+			userId: id, login, token: 'mock-token',
+		});
+		assert.equal(next.committed, true);
+		assert.deepEqual(state.requests.filter(({ path }) => path.endsWith('/git/trees')).at(-1)?.body?.tree, [
+			{ path, mode: '100644', type: 'blob', content: expected.replace("title: '开始'", 'title: 新标题') },
+		]);
+	});
+
 	it('records pending operations when GitHub commit creation fails', async () => {
 		const pendingUser = `${userId}-pending`;
 		const workspace = await createFixture(pendingUser, { baseSha: 'base-sha' });
@@ -263,11 +300,16 @@ describe('backend persistence and GitHub mapping', () => {
 		assert.equal(saved?.pendingCommit, true);
 		assert.deepEqual(saved?.pendingOps, [{ op: 'put', path: 'docs/pending.mdx', content: 'retry' }]);
 		assert.equal(saved.headSha, undefined);
+		const { getGithubStatus } = await import('../tina/github/commit');
+		assert.equal(getGithubStatus(saved).commit, 'pending');
+		assert.equal(getGithubStatus(saved).branch, 'unconfirmed');
 		state.mode = 'commit';
 		assert.equal((await commitOps(saved.pendingOps!, saved, identity)).committed, true);
 		const retried = await getWorkspace(pendingUser);
 		assert.equal(retried?.pendingCommit, false);
 		assert.deepEqual(retried?.pendingOps, []);
+		assert.equal(getGithubStatus(retried).commit, 'synced');
+		assert.equal(getGithubStatus(retried).branch, 'ready');
 	});
 
 	it('maps merged, closed and missing PR states', async () => {
@@ -322,7 +364,7 @@ describe('backend persistence and GitHub mapping', () => {
 	});
 
 	it('preserves a branch edited outside Tina and invalidates old editors', async () => {
-		const { assertEditRevision, getEditRevision } = await import('../tina/edit-revision');
+		const { assertEditRevision, getEditRevision } = await import('../tina/editor/edit-revision');
 		const id = `${userId}-foreign-ref`;
 		await createFixture(id);
 		const revision = await getEditRevision(id);
@@ -334,6 +376,7 @@ describe('backend persistence and GitHub mapping', () => {
 			userId: id, login, token: 'mock-token',
 		});
 		assert.equal(result.committed, false);
+		assert.equal((await getWorkspace(id))?.branchChanged, true);
 		assert.equal(await purgeWorkspace(workspace, 'mock-token'), 'done');
 		assert.ok(state.requests.every(({ method }) => method === 'GET'));
 		assert.equal(state.head, 'outside-edit');
@@ -356,7 +399,7 @@ describe('backend persistence and GitHub mapping', () => {
 	});
 
 	it('rejects a save that discovers its PR has closed', async () => {
-		const { prepareWrite } = await import('../tina/write-context');
+		const { prepareWrite } = await import('../tina/workspace/write-context');
 		const id = `${userId}-closed-save`;
 		await createFixture(id, { state: 'submitted' });
 		await updateWorkspace(id, { prNumber: 123 });
@@ -368,8 +411,8 @@ describe('backend persistence and GitHub mapping', () => {
 	});
 
 	it('rechecks an expired candidate after a save has renewed it', async () => {
-		const { sweepWorkspace } = await import('../tina/sweep');
-		const { INACTIVE_MS } = await import('../tina/workspace');
+		const { sweepWorkspace } = await import('../tina/workspace/sweep');
+		const { INACTIVE_MS } = await import('../tina/workspace/workspace');
 		const id = `${userId}-renewed`;
 		const candidate = await createFixture(id);
 		const now = new Date();
@@ -382,7 +425,7 @@ describe('backend persistence and GitHub mapping', () => {
 	});
 
 	it('cleans up a closed PR before retrying any queued save', async () => {
-		const { sweepWorkspace } = await import('../tina/sweep');
+		const { sweepWorkspace } = await import('../tina/workspace/sweep');
 		const id = `${userId}-closed-pending`;
 		await createFixture(id, { state: 'submitted' });
 		await updateWorkspace(id, {

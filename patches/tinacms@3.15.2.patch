@@ -1,138 +1,253 @@
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -18177,6 +18177,102 @@
+@@ -18177,6 +18177,122 @@ const ResetModal = ({ close: close2, reset }) => {
      "Reset"
    ))));
  };
-+const ReviewControls = ({ onSave, canSave, pristine, submitting }) => {
-+  const [workspace, setWorkspace] = React.useState(null);
-+  const [github, setGithub] = React.useState(null);
-+  const [busy, setBusy] = React.useState(false);
++const ReviewControls = ({ onSave, saveBeforeReview, formActions, pristine, canSubmit, submitting, guardChecking, validationFailed, submitFailed, submitSucceeded }) => {
++  const editor = window.__OAS_EDITOR__;
++  const [snapshot, setSnapshot] = React.useState(null);
++  const [request, setRequest] = React.useState("loading");
++  const [action, setAction] = React.useState(null);
 +  const [error, setError] = React.useState(null);
 +  const loadId = React.useRef(0);
++  const running = React.useRef(false);
 +  const load = React.useCallback(async () => {
++    const id = ++loadId.current;
 +    try {
-+      const id = ++loadId.current;
 +      const response = await fetch("/api/tina/workspace", { credentials: "include", cache: "no-store" });
-+      if (!response.ok) return;
++      if (response.status === 401) {
++        if (id === loadId.current) {
++          setSnapshot(null);
++          setRequest("signed_out");
++        }
++        return;
++      }
++      if (!response.ok) throw new Error("Workspace status unavailable");
 +      const data = await response.json();
-+      if (id !== loadId.current) return;
-+      setWorkspace(data.workspace);
-+      setGithub(data.github || null);
-+    } catch (e) {
++      if (!data.status) throw new Error("Workspace status missing");
++      if (id === loadId.current) {
++        setSnapshot(data.status);
++        setRequest("ready");
++      }
++    } catch {
++      if (id === loadId.current) {
++        setSnapshot(null);
++        setRequest("error");
++      }
 +    }
 +  }, []);
 +  React.useEffect(() => {
++    if (action || submitting || guardChecking) return;
++    void load();
 +    const timer = setInterval(load, 3e4);
-+    return () => clearInterval(timer);
-+  }, [load]);
-+  React.useEffect(() => {
-+    if (!submitting) void load();
-+  }, [load, submitting]);
-+  const submit = async () => {
-+    setBusy(true);
-+    setError(null);
-+    try {
-+      if (!pristine && !await onSave()) {
-+        throw new Error("\u8bf7\u5148\u4fee\u6b63\u8868\u5355\u5e76\u6210\u529f\u4fdd\u5b58\u3002");
-+      }
-+      const response = await fetch("/api/tina/submit", { method: "POST", credentials: "include" });
-+      const data = await response.json();
-+      if (!response.ok) throw new Error(data.message || "\u63d0\u4ea4\u5931\u8d25");
++    return () => {
++      clearInterval(timer);
 +      ++loadId.current;
-+      setWorkspace(data.workspace);
-+    } catch (e) {
-+      setError(e.message);
++    };
++  }, [load, action, submitting, guardChecking]);
++  const permissions = editor.derivePermissions(snapshot, {
++    dirty: !pristine,
++    valid: canSubmit,
++    busy: Boolean(action || submitting || guardChecking)
++  });
++  const perform = async (operation, fn) => {
++    if (running.current || !permissions[operation]) return;
++    running.current = true;
++    ++loadId.current;
++    setError(null);
++    setAction(operation);
++    try {
++      await fn();
++    } catch (failure) {
++      setError(failure.message);
 +    } finally {
-+      setBusy(false);
++      running.current = false;
++      setAction(null);
 +    }
 +  };
-+  const discard = async () => {
-+    if (!window.confirm("\u786e\u5b9a\u6e05\u7406\u672c\u6b21\u8349\u7a3f\u3001\u5173\u95ed PR \u5e76\u5220\u9664 Tina \u7ba1\u7406\u7684\u5206\u652f\uff1f")) return;
-+    setBusy(true);
-+    setError(null);
-+    try {
++  const save = () => perform("save", onSave);
++  const submit = () => perform("pr", async () => {
++    if (!pristine && !await saveBeforeReview()) {
++      throw new Error("请先修正表单并成功保存。");
++    }
++    const response = await fetch("/api/tina/submit", { method: "POST", credentials: "include" });
++    const data = await response.json();
++    if (!response.ok) throw new Error(data.message || "提交审核失败");
++  });
++  const discard = () => {
++    if (!permissions.clean || !window.confirm("确定清除本次草稿、关闭 PR 并删除 Tina 管理的分支？")) return;
++    return perform("clean", async () => {
 +      const response = await fetch("/api/tina/discard", { method: "POST", credentials: "include" });
 +      const data = await response.json();
-+      if (!response.ok) throw new Error(data.message || "\u653e\u5f03\u5931\u8d25");
++      if (!response.ok) throw new Error(data.message || "放弃修改失败");
 +      window.location.reload();
-+    } catch (e) {
-+      setError(e.message);
-+      setBusy(false);
-+    }
++    });
 +  };
-+  const authMissing = github && github.error;
-+  const stateLabel = {
-+    editing: "\u8349\u7a3f",
-+    submitted: "PR #" + workspace?.prNumber + " \u5f85\u5ba1\u6838",
-+    merged: "\u5df2\u5408\u5e76",
-+    closed: "\u5df2\u5173\u95ed"
-+  };
-+  let label = stateLabel[workspace?.state] ?? "\u672a\u63d0\u4ea4";
-+  if (workspace?.branch) label += " \u00b7 " + workspace.branch;
-+  if (workspace?.pendingCommit) label = "\u8349\u7a3f\u5df2\u4fdd\u5b58\uff0cGitHub \u63d0\u4ea4\u5f85\u91cd\u8bd5";
-+  if (workspace?.purging) label = "\u6e05\u7406\u5f85\u91cd\u8bd5";
++  const labels = editor.statusLabels(snapshot, request);
++  let page = "未修改";
++  if (snapshot?.stale) page = "页面已过期，请刷新";
++  else if (submitting || action === "save") page = "保存中";
++  else if (validationFailed) page = "表单有校验错误";
++  else if (submitFailed) page = "保存失败";
++  else if (!pristine) page = "有未保存修改";
++  else if (submitSucceeded) page = "已写入数据库";
++  const authMissing = ["clerk_only", "reauthorize_required", "login_changed"].includes(snapshot?.auth);
 +  const linkClass = "text-blue-600 hover:underline";
-+  const status = authMissing
-+    ? React.createElement("a", {
-+        href: "#", className: linkClass,
-+        onClick: (event) => { event.preventDefault(); window.__OAS_CONNECT_GITHUB__?.(); }
-+      }, "\u91cd\u65b0\u6388\u6743 GitHub")
-+    : workspace?.prUrl
-+    ? React.createElement("a", {
-+        href: workspace.prUrl, target: "_blank", rel: "noreferrer", className: linkClass
-+      }, label)
-+    : React.createElement("span", null, label);
++  const prUrl = snapshot?.pullRequest.url;
++  const items = [
++    ["登录", authMissing ? React.createElement("button", {
++      type: "button", className: linkClass,
++      onClick: () => window.__OAS_CONNECT_GITHUB__?.()
++    }, labels.auth) : labels.auth],
++    ["内容", labels.content],
++    ["当前页面", page],
++    ["工作区", action === "clean" ? "正在清理" : labels.workspace],
++    ["GitHub", labels.github],
++    ["PR", action === "pr" ? "正在提交审核" : prUrl ? React.createElement("a", {
++      href: prUrl, target: "_blank", rel: "noreferrer", className: linkClass
++    }, labels.pullRequest) : labels.pullRequest]
++  ];
 +  return React.createElement(React.Fragment, null,
-+    React.createElement(Button$2, {
-+      onClick: submit, disabled: busy || submitting || (!pristine && !canSave),
-+      variant: "secondary", size: "small", title: "\u63d0\u4ea4\u5ba1\u6838"
-+    }, "Pr"),
-+    React.createElement(Button$2, {
-+      onClick: discard, disabled: busy || submitting,
-+      variant: "secondary", size: "small", title: "\u6e05\u7406\u5f53\u524d\u4fee\u6539"
-+    }, "Clean"),
++    React.createElement(FormKeyBindings, { onSubmit: save }),
++    formActions(permissions, save),
++    React.createElement(Button$2, { onClick: submit, disabled: !permissions.pr, variant: "secondary", size: "small", title: "提交审核" }, "Pr"),
++    React.createElement(Button$2, { onClick: discard, disabled: !permissions.clean, variant: "secondary", size: "small", title: "清理当前修改" }, "Clean"),
 +    React.createElement("div", {
-+      className: "flex flex-col items-end justify-center text-xs text-gray-600 leading-tight",
-+      style: { minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" },
-+      title: workspace ? workspace.fork + " / " + workspace.branch : void 0
-+    }, status, error ? React.createElement("span", {
-+      className: "text-red-500 max-w-[220px] truncate", title: error
-+    }, error) : null));
++      role: "status", "aria-label": "编辑状态",
++      className: "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600 leading-tight",
++      style: { minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" }
++    }, items.map(([name, value]) => React.createElement("span", { key: name }, name + "：", value)),
++    error && React.createElement("span", { className: "text-red-600" }, error)));
 +};
  const NoFieldsPlaceholder = () => /* @__PURE__ */ React.createElement(
    "div",
    {
-@@ -18414,10 +18510,11 @@
+@@ -18287,7 +18403,9 @@ const FormBuilder = ({
+       invalid,
+       submitting,
+       dirtySinceLastSubmit,
+-      hasValidationErrors
++      hasValidationErrors,
++      submitFailed,
++      submitSucceeded
+     }) => {
+       const usingProtectedBranch = cms.api.tina.usingProtectedBranch();
+       const canSubmit = !pristine && !submitting && !hasValidationErrors && !(invalid && !dirtySinceLastSubmit);
+@@ -18325,11 +18443,11 @@ const FormBuilder = ({
+               }
+               captureWorkflowChoice(false, errorMsg);
+               setDeletedBranchModalOpen(true);
+-              return;
++              return false;
+             }
+             if (isSessionExpiredError(error)) {
+               captureWorkflowChoice(false, errorMsg);
+-              return;
++              return false;
+             }
+             captureEvent(SaveContentErrorEvent, {
+               documentPath: tinaForm.path,
+@@ -18341,11 +18459,13 @@ const FormBuilder = ({
+               documentPath: tinaForm.path
+             });
+             captureWorkflowChoice(true);
++            return true;
+           }
+         } else {
+           console.debug(
+             "[tina:branch-guard] safeSubmit: skipped — canSubmit is false"
+           );
++          return false;
+         }
+       };
+       const safeHandleSubmit = async () => {
+@@ -18374,15 +18494,36 @@ const FormBuilder = ({
+           );
+           setIsGuardChecking(false);
+           setDeletedBranchModalOpen(true);
+-          return;
++          return false;
+         }
+         if (usingProtectedBranch) {
+           setCreateBranchModalOpen(true);
+-        } else {
+-          await safeSubmit();
++          setIsGuardChecking(false);
++          return false;
+         }
++        const saved = await safeSubmit();
+         setIsGuardChecking(false);
++        return saved;
+       };
++      const showReview = !hideFooter && typeof window !== "undefined" && Boolean(window.__OAS_EDITOR__);
++      const formActions = (permissions, save) => React.createElement(React.Fragment, null,
++        tinaForm.reset && React.createElement(ResetForm, {
++          pristine,
++          disabled: !permissions.reset,
++          size: "small",
++          reset: async () => {
++            finalForm.reset();
++            await tinaForm.reset();
++            captureEvent(FormResetEvent);
++          }
++        }, tinaForm.buttons.reset),
++        React.createElement(Button$2, {
++          onClick: save,
++          disabled: !permissions.save,
++          busy: submitting,
++          size: "small",
++          variant: "primary"
++        }, tinaForm.buttons.save));
+       return /* @__PURE__ */ React.createElement(React.Fragment, null, createBranchModalOpen && /* @__PURE__ */ React.createElement(
+         CreateBranchModal,
+         {
+@@ -18407,34 +18548,27 @@ const FormBuilder = ({
+           crudType: tinaForm.crudType,
+           tinaForm
+         }
+-      ), /* @__PURE__ */ React.createElement(DragDropContext, { onDragEnd: moveArrayItem }, /* @__PURE__ */ React.createElement(FormKeyBindings, { onSubmit: safeHandleSubmit }), /* @__PURE__ */ React.createElement(FormPortalProvider, null, /* @__PURE__ */ React.createElement(FormWrapper, { id: tinaForm.id }, (tinaForm == null ? void 0 : tinaForm.fields.length) ? /* @__PURE__ */ React.createElement(
++      ), /* @__PURE__ */ React.createElement(DragDropContext, { onDragEnd: moveArrayItem }, /* @__PURE__ */ !showReview && React.createElement(FormKeyBindings, { onSubmit: safeHandleSubmit }), /* @__PURE__ */ React.createElement(FormPortalProvider, null, /* @__PURE__ */ React.createElement(FormWrapper, { id: tinaForm.id }, (tinaForm == null ? void 0 : tinaForm.fields.length) ? /* @__PURE__ */ React.createElement(
+         FieldsBuilder,
+         {
+           form: tinaForm,
            activeFieldName: form.activeFieldName,
            fields: fieldGroup.fields
          }
 -      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full h-16 px-6 bg-white border-t border-gray-100 flex items-center justify-end" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-end gap-2	flex items-center max-w-form" }, tinaForm.reset && /* @__PURE__ */ React.createElement(
-+      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full min-h-16 px-6 py-2 bg-white border-t border-gray-100 flex items-center justify-start", style: { maxWidth: "100vw" } }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-start gap-1 flex flex-wrap items-center max-w-form", style: { maxWidth: "calc(100vw - 48px)" } }, tinaForm.reset && /* @__PURE__ */ React.createElement(
-         ResetForm,
-         {
-           pristine,
-+          size: "small",
-           reset: async () => {
-             finalForm.reset();
-             await tinaForm.reset();
-@@ -18431,10 +18528,18 @@
-           onClick: safeHandleSubmit,
-           disabled: !canSubmit || isGuardChecking,
-           busy: submitting,
-+          size: "small",
-           variant: "primary"
+-        ResetForm,
+-        {
+-          pristine,
+-          reset: async () => {
+-            finalForm.reset();
+-            await tinaForm.reset();
+-            captureEvent(FormResetEvent);
+-          }
+-        },
+-        tinaForm.buttons.reset
+-      ), /* @__PURE__ */ React.createElement(
+-        Button$2,
+-        {
+-          onClick: safeHandleSubmit,
+-          disabled: !canSubmit || isGuardChecking,
+-          busy: submitting,
+-          variant: "primary"
++      ) : /* @__PURE__ */ React.createElement(NoFieldsPlaceholder, null))), !hideFooter && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(RelatedFilesBanner, null), /* @__PURE__ */ React.createElement("div", { className: "relative flex-none w-full min-h-16 px-6 py-2 bg-white border-t border-gray-100 flex items-center justify-start", style: { maxWidth: "100vw" } }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 w-full justify-start gap-1 flex flex-wrap items-center max-w-form", style: { maxWidth: "calc(100vw - 48px)" } }, showReview ? React.createElement(ReviewControls, {
++        formActions,
++        onSave: safeHandleSubmit,
++        saveBeforeReview: async () => {
++          if (!canSubmit || finalForm.getState().validating) return false;
++          const receipt = window.__OAS_SAVE_RECEIPT__;
++          const saved = await safeHandleSubmit();
++          const state = finalForm.getState();
++          return Boolean(saved && receipt !== window.__OAS_SAVE_RECEIPT__ &&
++            state.submitSucceeded && !state.submitFailed && !state.dirtySinceLastSubmit);
          },
-         tinaForm.buttons.save
+-        tinaForm.buttons.save
 -      ), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
-+      ), /* @__PURE__ */ React.createElement(ReviewControls, { onSave: async () => {
-+        if (!canSubmit || finalForm.getState().validating) return false;
-+        const receipt = window.__OAS_SAVE_RECEIPT__;
-+        const result = await handleSubmit();
-+        const state = finalForm.getState();
-+        return receipt !== window.__OAS_SAVE_RECEIPT__ && !result?.[FORM_ERROR] &&
-+          state.submitSucceeded && !state.submitFailed && !state.dirtySinceLastSubmit;
-+      }, canSave: canSubmit, pristine, submitting }), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
++        pristine, canSubmit, submitting, guardChecking: isGuardChecking,
++        validationFailed: hasValidationErrors, submitFailed, submitSucceeded
++      }) : formActions({ reset: !pristine, save: canSubmit && !isGuardChecking }, safeHandleSubmit), tinaForm.actions.length > 0 && /* @__PURE__ */ React.createElement(
          FormActionMenu,
          {
            form: tinaForm,

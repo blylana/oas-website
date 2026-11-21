@@ -1,4 +1,4 @@
-import { appDb } from './mongo';
+import { appDb } from '../mongo';
 
 type PublishedIndex = { _id: 'published'; namespace: string; sha: string };
 

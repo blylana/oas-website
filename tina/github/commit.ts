@@ -1,8 +1,8 @@
-import { commitFiles, getRefSha, GithubApiError } from './github';
-import type { BufferedOp, RequestContext } from './context';
-import { clearGithubIdentity } from './github-identity';
-import { updateWorkspace, type Workspace } from './workspace';
-import { logger } from './logger';
+import { commitFiles, getRefSha, DraftBranchChangedError, GithubApiError } from './github';
+import type { BufferedOp, RequestContext } from '../editor/context';
+import { clearGithubIdentity } from '../auth/github-identity';
+import { updateWorkspace, type Workspace } from '../workspace/workspace';
+import { logger } from '../logger';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -13,6 +13,15 @@ export type CommitIdentity = {
 	login: string;
 	token: string;
 };
+
+export function getGithubStatus(workspace: Workspace | null) {
+	return {
+		fork: workspace?.forkReady || workspace?.headSha ? 'ready' as const : 'unknown' as const,
+		branch: workspace?.branchChanged ? 'changed_externally' as const
+			: workspace?.headSha ? 'ready' as const : 'unconfirmed' as const,
+		commit: workspace?.pendingCommit ? 'pending' as const : workspace?.headSha ? 'synced' as const : 'none' as const,
+	};
+}
 
 function dedupe(ops: BufferedOp[]): BufferedOp[] {
 	const latest = new Map<string, BufferedOp>();
@@ -70,6 +79,8 @@ export async function commitOps(
 			changes,
 		});
 		await updateWorkspace(identity.userId, {
+			forkReady: true,
+			branchChanged: false,
 			headSha: result.sha,
 			changedPaths: [...changedPaths],
 			pendingCommit: false,
@@ -93,6 +104,7 @@ export async function commitOps(
 			changedPaths: [...changedPaths],
 			pendingCommit: true,
 			pendingOps: deduped,
+			...(error instanceof DraftBranchChangedError ? { branchChanged: true, forkReady: true } : {}),
 		});
 		return { committed: false, error };
 	}

@@ -5,22 +5,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TinaNodeBackend, LocalBackendAuthProvider } from '@tinacms/datalayer';
 import databaseClient from './tina/__generated__/databaseClient';
-import { ClerkBackendAuthenticationForAstro } from './tina/clerk-auth';
-import { getRequestContext, requestContext, type RequestContext } from './tina/context';
-import { hasDraft } from './tina/tenant';
-import { getGithubIdentity, GithubAuthError } from './tina/github-identity';
-import { withLock } from './tina/lock';
-import { enforceRateLimit } from './tina/ratelimit';
-import { prepareWrite } from './tina/write-context';
-import { flushCommit } from './tina/commit';
+import { ClerkBackendAuthenticationForAstro } from './tina/auth/clerk-auth';
+import { getRequestContext, requestContext, type RequestContext } from './tina/editor/context';
+import { hasDraft } from './tina/content/tenant';
+import { getGithubIdentity, GithubAuthError } from './tina/auth/github-identity';
+import { withLock } from './tina/workspace/lock';
+import { enforceRateLimit } from './tina/workspace/ratelimit';
+import { prepareWrite } from './tina/workspace/write-context';
+import { flushCommit } from './tina/github/commit';
 import { HttpError } from './tina/http-error';
-import { createTinaApi } from './tina/api';
-import { startSweep } from './tina/sweep';
+import { createTinaApi } from './tina/pull-request/api';
+import { startSweep } from './tina/workspace/sweep';
 import { logger } from './tina/logger';
 import { getOperationType } from './tina/graphql-operation';
-import { assertEditRevision, EDIT_REVISION_HEADER, getEditRevision } from './tina/edit-revision';
-import { getWorkspace } from './tina/workspace';
-import { getPublishedIndex } from './tina/published-index';
+import { assertEditRevision, EDIT_REVISION_HEADER, getEditRevision } from './tina/editor/edit-revision';
+import { getWorkspace } from './tina/workspace/workspace';
+import { getPublishedIndex } from './tina/content/published-index';
 
 // Astro's generated entry can start its own listener unless this is disabled
 // before importing it. Express owns the production listener in this setup.

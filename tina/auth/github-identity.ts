@@ -19,6 +19,14 @@ export type GithubIdentity = {
 };
 
 export type GithubAuthErrorCode = 'no_token' | 'missing_scope' | 'unauthorized';
+type AuthStatus = 'ready' | 'clerk_only' | 'reauthorize_required' | 'login_changed' | 'error';
+
+export function getAuthStatus(error: string | undefined, loginChanged: boolean): AuthStatus {
+	if (loginChanged) return 'login_changed';
+	if (error === 'no_token') return 'clerk_only';
+	if (error === 'missing_scope' || error === 'unauthorized') return 'reauthorize_required';
+	return error ? 'error' : 'ready';
+}
 
 export class GithubAuthError extends Error {
 	code: GithubAuthErrorCode;

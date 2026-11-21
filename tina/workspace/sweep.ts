@@ -1,10 +1,10 @@
-import { commitOps } from './commit';
-import { getGithubIdentity } from './github-identity';
+import { commitOps } from '../github/commit';
+import { getGithubIdentity } from '../auth/github-identity';
 import { withLock } from './lock';
 import { purgeWorkspace } from './purge';
-import { syncPrState } from './pr-sync';
+import { syncPrState } from '../pull-request/pr-sync';
 import { findWorkspaces, getWorkspace, INACTIVE_MS } from './workspace';
-import { logger } from './logger';
+import { logger } from '../logger';
 
 const SWEEP_MS = 10 * 60 * 1000;
 
@@ -41,7 +41,7 @@ export async function sweepWorkspace(userId: string, now: Date, resolveIdentity 
 			await commitOps(workspace.pendingOps ?? [], workspace, { userId, login: identity.login, token });
 			return;
 		}
-		if (expired) await purgeWorkspace(workspace, token);
+		if (expired) await purgeWorkspace(workspace, token, 'expired');
 	});
 }
 

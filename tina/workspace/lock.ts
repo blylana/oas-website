@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { appDb } from './mongo';
-import { HttpError } from './http-error';
+import { appDb } from '../mongo';
+import { HttpError } from '../http-error';
 
 const COLLECTION = 'locks';
 // Fork creation can poll GitHub for a while; keep the lock longer than the

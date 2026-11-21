@@ -34,10 +34,10 @@
 
 - [x] A4.1 GraphQL introspection/query 请求走普通读取路径，结果：`PASS`
 - [x] A4.2 以 `#graphql` 开头的 mutation 被识别为写入请求，结果：`PASS`
-- [ ] A4.3 首次写入会从 `main` namespace 克隆用户 draft，结果：`TODO`
+- [ ] A4.3 首次写入从当前 GitHub 基线 commit 对应的内容索引克隆用户 draft，结果：`TODO`（浏览器已验证首次保存生成用户草稿，尚需单独核对克隆来源与分支基线 SHA 一致）
 - [ ] A4.4 同一用户后续读取使用 `draft:<userId>` namespace，结果：`TODO`
 - [ ] A4.5 两个用户的 draft 数据互相不可见，结果：`TODO`
-- [ ] A4.6 draft 删除后用户回到 main 内容，结果：`TODO`
+- [x] A4.6 draft 删除后用户回到当前 GitHub 基线的索引内容，结果：`PASS`（Clean 后接口报告 `draft: absent`，页面标题恢复为「消息推送」）
 - [ ] A4.7 GraphQL 写入失败时清空 buffer，不产生 GitHub commit，结果：`TODO`
 
 ### A5. GitProvider 与 GitHub commit
@@ -56,7 +56,7 @@
 ### A6. Workspace、锁和限流
 
 - [x] A6.1 workspace 创建、读取、更新和删除正常，结果：`PASS`
-- [ ] A6.2 workspace login 变化时清理旧 fork、旧分支和旧 draft，结果：`TODO`
+- [ ] A6.2 GitHub login 与工作区记录不一致时拦截操作，保留并提示重新连接原账号，结果：`TODO`
 - [ ] A6.3 workspace 空闲过期时保存前触发清理，结果：`TODO`
 - [x] A6.4 同一用户并发保存只有一个请求持有锁，结果：`PASS`
 - [x] A6.5 锁过期后可以被后续请求接管，结果：`PASS`
@@ -65,10 +65,10 @@
 
 ### A7. PR、清理和定时 sweep
 
-- [ ] A7.1 `POST /api/tina/submit` 没有变更时返回 no changes，结果：`TODO`
-- [ ] A7.2 `POST /api/tina/submit` 能创建 PR 并保存 PR 编号和 URL，结果：`TODO`
-- [ ] A7.3 已有 PR 时重复 submit 保持幂等，结果：`TODO`
-- [ ] A7.4 PR 状态为 open 时同步为 submitted，结果：`TODO`
+- [x] A7.1 `POST /api/tina/submit` 没有变更时返回 `409 no_changes`，结果：`PASS`（见 2026-11-20 回归记录）
+- [x] A7.2 `POST /api/tina/submit` 能创建 PR 并保存 PR 编号和 URL，结果：`PASS`（2026-11-21，测试 PR #4）
+- [x] A7.3 已有 PR 时重复 submit 保持幂等，结果：`PASS`（2026-11-20，重复提交复用测试 PR #3）
+- [x] A7.4 状态接口查询开放中的 PR 时返回 `submitted`，结果：`PASS`（2026-11-21，测试 PR #4）
 - [x] A7.5 PR 状态为 merged 时清理 workspace、draft 和分支，结果：`PASS`
 - [x] A7.6 PR 状态为 closed 时清理 workspace、draft 和分支，结果：`PASS`
 - [x] A7.7 `POST /api/tina/discard` 关闭 PR、删除分支、删除 draft 并删除 workspace，结果：`PASS`
@@ -92,18 +92,19 @@
 ### B1. 编辑器底部布局
 
 - [x] B1.1 编辑器底部从左到右显示 `Reset`、`Save`、`Pr`、`Clean`、状态，结果：`PASS`
-- [x] B1.2 四个按钮使用紧凑尺寸，状态区域保持原有内容，结果：`PASS`
+- [x] B1.2 四个按钮使用紧凑尺寸，底栏展示登录、内容、当前页面、工作区、GitHub 和 PR 六项状态，结果：`PASS`
 - [x] B1.3 底部按钮左对齐，窄屏不溢出，结果：`PASS`
 - [x] B1.4 Reset、Save、Pr、Clean 的 tooltip 或辅助文本仍表达原始语义，结果：`PASS`
 
 ### B2. Tina 编辑操作
 
-- [x] B2.1 修改字段后显示 Unsaved changes，结果：`PASS`
+- [x] B2.1 修改字段后显示「有未保存修改」，结果：`PASS`
 - [x] B2.2 点击 Reset 弹出确认框，确认后恢复原值并清除 dirty 状态，结果：`PASS`
 - [x] B2.3 点击 Reset 取消后保留修改，结果：`PASS`
 - [x] B2.4 修改字段后点击 Save，Network 出现带 `#graphql` 的 update mutation，结果：`PASS`
 - [x] B2.5 Save 成功后页面显示无未保存修改，结果：`PASS`
 - [ ] B2.6 Save 失败时页面显示错误且不误报成功，结果：`TODO`
+- [x] B2.7 可视化编辑页左侧显示编辑表单，右侧预览随标题输入即时更新，结果：`PASS`（`4322` 上的「消息推送」页）
 
 ### B3. PR 和 Clean 操作
 
@@ -112,7 +113,7 @@
 - [x] B3.3 重复点击 Pr 不创建重复 PR，结果：`PASS`（仍使用测试 PR #3）
 - [x] B3.4 点击 Clean 弹出放弃修改确认框，结果：`PASS`
 - [x] B3.5 Clean 取消后保留当前修改，结果：`PASS`
-- [x] B3.6 Clean 确认后刷新页面并恢复 main 内容，结果：`PASS`
+- [x] B3.6 Clean 确认后刷新页面并恢复当前 GitHub 基线的索引内容，结果：`PASS`
 - [x] B3.7 Clean 确认后用户分支、draft 和 workspace 被清理，结果：`PASS`
 
 ### B4. 状态、鉴权和隔离
@@ -123,6 +124,7 @@
 - [x] B4.4 刷新页面后仍能看到当前用户 draft，结果：`PASS`
 - [ ] B4.5 另一浏览器上下文登录另一用户时看不到前一个用户 draft，结果：`TODO`
 - [x] B4.6 PR merged/closed 后刷新页面显示清理后的状态，结果：`PASS`
+- [x] B4.7 已授权用户在无工作区、当前页面未修改时，Reset、Save、Pr、Clean 均禁用，结果：`PASS`
 
 ### B5. 浏览器异常场景
 
@@ -130,6 +132,7 @@
 - [ ] B5.2 模拟 GitHub 502/超时后界面显示可重试状态，结果：`TODO`
 - [ ] B5.3 断网后恢复连接，页面可以重新加载 workspace，结果：`TODO`
 - [ ] B5.4 窄屏视口下底部按钮仍可点击且状态不遮挡按钮，结果：`TODO`
+- [ ] B5.5 工作分支在 GitHub 被删除后，验证 Save 和 Pr 的处理及恢复提示，结果：`TODO`
 
 ## 执行记录
 
@@ -142,6 +145,10 @@
 | 2026-11-20 | 静态页、服务端口、匿名认证 | PASS | 4321/4322/27017 监听，页面 200，匿名 Tina API 401 |
 | 2026-11-20 | Reset / Save / Clean 浏览器流程 | PASS | Reset 确认恢复，Save commit 成功，Clean 确认后 workspace 和分支清理 |
 | 2026-11-20 | Pr 提交审核与 Clean 回收 | PASS | 创建临时 PR #1，状态为 submitted，状态链接显示后用 Clean 关闭 PR、删除分支和 workspace |
+| 2026-11-21 | Tina 补丁安装和生产构建 | PASS | `pnpm install --offline --frozen-lockfile` 和 `pnpm run build` 成功 |
+| 2026-11-21 | 自动化回归 | PASS | `pnpm exec tsx --test tests/*.test.ts` 共 18/18 通过。后端 12 项、GraphQL 操作识别 2 项、按钮权限 4 项 |
+| 2026-11-21 | TypeScript 全量检查 A1.4 | FAIL | 最近一次全量检查报 30 条既有 Astro/Starlight 类型错误，Tina、服务端、脚本和测试文件无新增诊断 |
+| 2026-11-21 | Chrome 可视化编辑、Save、Pr、Clean | PASS | 真实 Clerk 登录、MongoDB 和 GitHub。详见下方可视化编辑回归 |
 
 ## 审查修复回归
 
@@ -151,3 +158,12 @@
 - Chrome：去掉请求 Cookie 后，workspace 和 Clean 仍返回 200，空草稿的 Pr 返回 409 `no_changes`。
 - Chrome：320 px 视口中，底栏右缘为 320 px，四个按钮和未提交状态均在视口内。
 - 本地索引：用 `scripts/reindex-main.ts origin/tina` 重建并激活已发布索引。Chrome 刷新后文档描述回到已发布的空值。
+
+## 可视化编辑回归（2026-11-21）
+
+1. 使用真实账号打开 [「消息推送」可视化编辑页](http://localhost:4322/admin/index.html#/~/user-manual/notify/)。修正服务端 Tina 客户端的默认端口后，左侧表单、右侧预览和底栏六项状态均出现。未编辑时四个按钮都禁用。
+2. 修改标题后，右侧预览即时更新，底栏显示「有未保存修改」。点击 Save 后接口记录一个修改路径和 GitHub commit `33bb0f0`，`pendingCommit` 为 `false`。
+3. 再改标题后直接点击 Pr。系统先保存并生成第二个 commit `765b16d`，再创建 [测试 PR #4](https://github.com/nearaura/oas-website/pull/4)，底栏显示链接和「待审核」。
+4. 点击 Clean 并确认后，编辑器和预览都恢复标题「消息推送」。状态接口返回 `workspace: null` 和 `draft: absent`。从 GitHub 确认 PR #4 已关闭，并用 `git ls-remote` 确认临时分支已删除。
+
+本轮真实浏览器回归尚未覆盖 GitHub 工作分支被删除后的恢复提示、授权失效、双用户草稿隔离，以及实际合并 PR 后的清理。

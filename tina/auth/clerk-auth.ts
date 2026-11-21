@@ -1,5 +1,5 @@
 import { Clerk } from '@clerk/backend';
-import { logger } from './logger';
+import { logger } from '../logger';
 
 type NodeRequest = {
 	headers?: Record<string, string | string[] | undefined>;

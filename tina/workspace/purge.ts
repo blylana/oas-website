@@ -1,8 +1,9 @@
-import { closePull, deleteBranch, getRefSha, GithubApiError } from './github';
-import { deleteDraft } from './tenant';
-import { deleteWorkspace, updateWorkspace, type Workspace } from './workspace';
-import { logger } from './logger';
-import { invalidateEditRevision } from './edit-revision';
+import { deleteBranch, getRefSha, GithubApiError } from '../github/github';
+import { closePull } from '../pull-request/github-api';
+import { deleteDraft } from '../content/tenant';
+import { deleteWorkspace, updateWorkspace, type Workspace, type WorkspaceEndReason } from './workspace';
+import { logger } from '../logger';
+import { invalidateEditRevision } from '../editor/edit-revision';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -14,8 +15,10 @@ export type PurgeResult = 'done' | 'pending';
  * the workspace document. If the branch cannot be deleted, keep the workspace
  * with `purging` set so the sweep retries later.
  */
-export async function purgeWorkspace(workspace: Workspace, token: string): Promise<PurgeResult> {
-	if (!workspace.purging) await updateWorkspace(workspace._id, { purging: true });
+export async function purgeWorkspace(workspace: Workspace, token: string, reason?: WorkspaceEndReason): Promise<PurgeResult> {
+	const endReason = workspace.endReason ?? reason ?? (workspace.state === 'merged' || workspace.state === 'closed'
+		? workspace.state : 'discarded');
+	if (!workspace.purging) await updateWorkspace(workspace._id, { purging: true, endReason });
 	await invalidateEditRevision(workspace._id);
 	let pending = false;
 	if (workspace.prNumber) {

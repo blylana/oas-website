@@ -1,6 +1,7 @@
-import { getPull, GithubApiError } from './github';
-import { updateWorkspace, type Workspace } from './workspace';
-import { logger } from './logger';
+import { GithubApiError } from '../github/github';
+import { getPull } from './github-api';
+import { updateWorkspace, type Workspace } from '../workspace/workspace';
+import { logger } from '../logger';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -31,4 +32,15 @@ export async function syncPrState(workspace: Workspace, token: string): Promise<
 		return updateWorkspace(workspace._id, { state: 'closed', closedAt: new Date() });
 	}
 	return workspace;
+}
+
+export function getPullRequestStatus(workspace: Workspace | null, checkFailed: boolean) {
+	if (!workspace?.prNumber) return { status: 'none' as const };
+	const { state, endReason, purging, mergedAt, prNumber: number, prUrl: url } = workspace;
+	let status: 'open' | 'merged' | 'closed' | 'unknown' | 'error' = 'open';
+	if (state === 'merged' || mergedAt) status = 'merged';
+	else if (endReason === 'closed' || (state === 'closed' && !purging)) status = 'closed';
+	else if (checkFailed) status = 'error';
+	else if (purging) status = 'unknown';
+	return { status, number, url };
 }

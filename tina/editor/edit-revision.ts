@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { appDb } from './mongo';
-import { HttpError } from './http-error';
-import { getPublishedIndex } from './published-index';
+import { appDb } from '../mongo';
+import { HttpError } from '../http-error';
+import { getPublishedIndex } from '../content/published-index';
 
 export const EDIT_REVISION_HEADER = 'x-oas-edit-revision';
 

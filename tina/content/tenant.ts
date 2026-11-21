@@ -1,7 +1,7 @@
 import { createDatabase, createLocalDatabase } from '@tinacms/datalayer';
 import mongodbLevel from 'mongodb-level';
-import { appDb } from './mongo';
-import { BufferingGitProvider } from './git-provider';
+import { appDb } from '../mongo';
+import { BufferingGitProvider } from '../github/git-provider';
 
 const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
 const { MongodbLevel } = mongodbLevel as typeof import('mongodb-level');

@@ -2,7 +2,9 @@ import { Clerk } from '@clerk/clerk-js';
 import { ui } from '@clerk/ui';
 import { ClerkAuthProvider } from 'tinacms-clerk/dist/tinacms';
 import { defineConfig, LocalAuthProvider } from 'tinacms';
-import { installAdminRequests } from './admin-requests';
+import { installAdminRequests } from './editor/admin-requests';
+import { statusLabels } from './editor/status-labels';
+import { derivePermissions } from './permissions';
 
 const isLocal = process.env.TINA_PUBLIC_IS_LOCAL === 'true';
 const clerk = new Clerk(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '');
@@ -26,6 +28,7 @@ if (typeof window !== 'undefined') {
   const loadClerk = clerk.load.bind(clerk);
   clerk.load = (options = {}) => loadClerk({ ui, ...options });
   if (!isLocal) {
+    window.__OAS_EDITOR__ = { derivePermissions, statusLabels };
     installAdminRequests(async () => {
       await clerk.load({ ui });
       return clerk.session?.getToken();

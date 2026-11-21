@@ -1,5 +1,5 @@
-import { appDb } from './mongo';
-import { HttpError } from './http-error';
+import { appDb } from '../mongo';
+import { HttpError } from '../http-error';
 
 export type RateLimitBucket = 'save:min' | 'pr:day';
 

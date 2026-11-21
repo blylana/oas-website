@@ -1,17 +1,18 @@
 import express, { type Request, type Response } from 'express';
-import { createPull, listOpenPulls } from './github';
-import { commitOps } from './commit';
-import { HttpError, toErrorResponse } from './http-error';
-import { getGithubIdentity, GithubAuthError, clearGithubIdentity } from './github-identity';
-import { withLock } from './lock';
-import { purgeWorkspace } from './purge';
+import { createPull, listOpenPulls } from './github-api';
+import { commitOps } from '../github/commit';
+import { HttpError, toErrorResponse } from '../http-error';
+import { getGithubIdentity, GithubAuthError, clearGithubIdentity } from '../auth/github-identity';
+import { withLock } from '../workspace/lock';
+import { purgeWorkspace } from '../workspace/purge';
 import { syncPrState } from './pr-sync';
-import { enforceRateLimit } from './ratelimit';
-import { deleteDraft } from './tenant';
-import { getWorkspace, updateWorkspace, INACTIVE_MS, type Workspace } from './workspace';
-import { getRequestContext } from './context';
-import { logger } from './logger';
-import { assertEditRevision, EDIT_REVISION_HEADER, invalidateEditRevision } from './edit-revision';
+import { enforceRateLimit } from '../workspace/ratelimit';
+import { deleteDraft } from '../content/tenant';
+import { getWorkspace, updateWorkspace, INACTIVE_MS, type Workspace } from '../workspace/workspace';
+import { getRequestContext } from '../editor/context';
+import { logger } from '../logger';
+import { assertEditRevision, EDIT_REVISION_HEADER, invalidateEditRevision } from '../editor/edit-revision';
+import { getEditorStatus } from '../editor/status';
 
 const owner = process.env.GITHUB_OWNER!;
 const repo = process.env.GITHUB_REPO!;
@@ -110,6 +111,7 @@ export function createTinaApi(options: Options) {
 		route(async (req, res) => {
 			const identity = await authenticate(options, req);
 			let current = await getWorkspace(identity.userId);
+			let prCheckFailed = false;
 			if (current && identity.token && current.login === identity.login &&
 				(current.prNumber || current.state === 'closed' || current.state === 'merged' ||
 					Date.now() - current.updatedAt.getTime() > INACTIVE_MS)) {
@@ -117,10 +119,13 @@ export function createTinaApi(options: Options) {
 					current = await withLock(identity.userId, async () => {
 						const workspace = await getWorkspace(identity.userId);
 						if (!workspace || workspace.login !== identity.login || workspace.purging) return workspace;
-						const synced = await syncPrState(workspace, identity.token!);
+						const synced = await syncPrState(workspace, identity.token!).catch((error) => {
+							prCheckFailed = true;
+							throw error;
+						});
 						const expired = !synced.prNumber && Date.now() - synced.updatedAt.getTime() > INACTIVE_MS;
 						if (synced.state === 'merged' || synced.state === 'closed' || expired) {
-							const result = await purgeWorkspace(synced, identity.token!);
+							const result = await purgeWorkspace(synced, identity.token!, expired && !synced.prNumber ? 'expired' : undefined);
 							return result === 'pending' ? await getWorkspace(identity.userId) : null;
 						}
 						return synced;
@@ -136,6 +141,7 @@ export function createTinaApi(options: Options) {
 			res.json({
 				workspace: workspaceView(current),
 				github: identity.githubError ? { error: identity.githubError } : null,
+				status: await getEditorStatus(identity, current, req.get(EDIT_REVISION_HEADER), prCheckFailed),
 			});
 		}),
 	);
@@ -249,6 +255,8 @@ export function createTinaApi(options: Options) {
 						purging: true,
 						state: 'closed',
 						closedAt: new Date(),
+						endReason: workspace.endReason ?? (workspace.state === 'merged' || workspace.state === 'closed'
+							? workspace.state : 'discarded'),
 					});
 					await invalidateEditRevision(identity.userId);
 					await deleteDraft(identity.userId);

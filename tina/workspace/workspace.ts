@@ -1,7 +1,8 @@
-import { appDb } from './mongo';
-import type { BufferedOp } from './context';
+import { appDb } from '../mongo';
+import type { BufferedOp } from '../editor/context';
 
 export type WorkspaceState = 'none' | 'editing' | 'submitted' | 'merged' | 'closed';
+export type WorkspaceEndReason = 'merged' | 'closed' | 'discarded' | 'expired';
 
 export type Workspace = {
 	_id: string;
@@ -19,12 +20,27 @@ export type Workspace = {
 	pendingCommit?: boolean;
 	pendingOps?: BufferedOp[];
 	purging?: boolean;
+	endReason?: WorkspaceEndReason;
+	branchChanged?: boolean;
 	createdAt: Date;
 	updatedAt: Date;
 	submittedAt?: Date;
 	mergedAt?: Date;
 	closedAt?: Date;
 };
+
+export function getWorkspaceStatus(workspace: Workspace | null) {
+	if (!workspace) return { status: 'absent' as const, tracked: false, hasChanges: false };
+	const { purging, state, mergedAt, changedPaths, pendingCommit } = workspace;
+	if (state === 'none') return { status: 'absent' as const, tracked: false, hasChanges: false };
+	const endReason = workspace.endReason ?? (mergedAt || state === 'merged'
+		? 'merged'
+		: state === 'closed' && !purging ? 'closed' : undefined);
+	let status: 'editing' | 'submitted' | 'cleaning' | 'cleanup_pending' = state === 'submitted' ? 'submitted' : 'editing';
+	if (purging) status = 'cleanup_pending';
+	else if (state === 'merged' || state === 'closed') status = 'cleaning';
+	return { status, endReason, tracked: true, hasChanges: Boolean(changedPaths?.length || pendingCommit) };
+}
 
 const COLLECTION = 'workspaces';
 export const INACTIVE_MS = 7 * 24 * 60 * 60 * 1000;

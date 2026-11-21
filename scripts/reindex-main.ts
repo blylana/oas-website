@@ -4,10 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createDatabase, FilesystemBridge } from '@tinacms/datalayer';
 import mongodbLevel from 'mongodb-level';
-import { BufferingGitProvider } from '../tina/git-provider';
+import { BufferingGitProvider } from '../tina/github/git-provider';
 import { getMongo } from '../tina/mongo';
-import { activatePublishedIndex } from '../tina/published-index';
-import { COLLECTION, DB_NAME, deleteNamespace, hasNamespace } from '../tina/tenant';
+import { activatePublishedIndex } from '../tina/content/published-index';
+import { COLLECTION, DB_NAME, deleteNamespace, hasNamespace } from '../tina/content/tenant';
 
 const ref = process.argv[2];
 if (!ref || ref.startsWith('-')) {

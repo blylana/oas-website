@@ -2,7 +2,9 @@ import { createClient } from 'tinacms/dist/client';
 import { queries } from '../../../tina/__generated__/types';
 
 const siteOrigin =
-	process.env.TINA_SITE_ORIGIN || process.env.PUBLIC_SITE_URL || 'http://localhost:4321';
+	process.env.TINA_SITE_ORIGIN ||
+	process.env.PUBLIC_SITE_URL ||
+	`http://localhost:${process.env.PORT || 4321}`;
 
 /**
  * The generated browser client intentionally uses a relative URL. Astro SSR

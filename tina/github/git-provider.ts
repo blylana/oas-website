@@ -1,4 +1,4 @@
-import { getRequestContext } from './context';
+import { getRequestContext } from '../editor/context';
 
 /**
  * Tina writes to git through `GitProvider.onPut/onDelete` during the GraphQL

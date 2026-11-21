@@ -1,4 +1,5 @@
-import { logger } from './logger';
+import { logger } from '../logger';
+import { preserveMdxFormatting } from '../content/mdx-formatting';
 
 const API = 'https://api.github.com';
 
@@ -14,7 +15,13 @@ export class GithubApiError extends Error {
 	}
 }
 
-async function call<T>(
+export class DraftBranchChangedError extends GithubApiError {
+	constructor() {
+		super(409, 'Draft branch differs from the last recorded commit');
+	}
+}
+
+export async function call<T>(
 	token: string,
 	method: string,
 	path: string,
@@ -210,6 +217,22 @@ export type TreeEntry = {
 	sha?: string | null;
 };
 
+async function getMdxAtCommit(token: string, fork: string, path: string, sha: string) {
+	const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+	try {
+		const file = await call<{ type: string; encoding: string; content: string }>(
+			token,
+			'GET',
+			`/repos/${fork}/contents/${encodedPath}?ref=${encodeURIComponent(sha)}`,
+		);
+		if (file.type === 'file' && file.encoding === 'base64') {
+			return Buffer.from(file.content, 'base64').toString('utf8');
+		}
+	} catch (error) {
+		if (!(error instanceof GithubApiError && error.status === 404)) throw error;
+	}
+}
+
 export async function commitFiles(input: {
 	token: string;
 	owner: string;
@@ -227,7 +250,7 @@ export async function commitFiles(input: {
 
 	const parentSha = await getRefSha(token, login, repo, branch);
 	if (parentSha !== null && parentSha !== expectedHead) {
-		throw new GithubApiError(409, 'Draft branch differs from the last recorded commit');
+		throw new DraftBranchChangedError();
 	}
 	if (!parentSha && !expectedHead && !baseSha) {
 		throw new GithubApiError(409, 'Branch does not exist and no base commit was recorded');
@@ -255,11 +278,15 @@ export async function commitFiles(input: {
 		}
 	}
 
-	const tree: TreeEntry[] = changes.map((change) =>
-		change.delete
-			? { path: change.path, mode: '100644', type: 'blob', sha: null }
-			: { path: change.path, mode: '100644', type: 'blob', content: change.content ?? '' },
-	);
+	const tree = await Promise.all(changes.map(async (change): Promise<TreeEntry> => {
+		if (change.delete) return { path: change.path, mode: '100644', type: 'blob', sha: null };
+		let content = change.content ?? '';
+		if (change.path.endsWith('.mdx')) {
+			const original = await getMdxAtCommit(token, `${login}/${repo}`, change.path, parent);
+			if (original !== undefined) content = preserveMdxFormatting(original, content);
+		}
+		return { path: change.path, mode: '100644', type: 'blob', content };
+	}));
 
 	const newTree = await call<{ sha: string }>(token, 'POST', `/repos/${login}/${repo}/git/trees`, {
 		base_tree: parentCommit.tree.sha,
@@ -286,56 +313,6 @@ export async function commitFiles(input: {
 		sha: newCommit.sha,
 		changedPaths: changes.map((change) => change.path),
 	};
-}
-
-export type PullRequest = {
-	number: number;
-	html_url: string;
-	state: 'open' | 'closed';
-	merged_at: string | null;
-	title: string;
-	head: { ref: string };
-};
-
-export async function listOpenPulls(
-	token: string,
-	owner: string,
-	repo: string,
-	login: string,
-	branch: string,
-) {
-	return call<PullRequest[]>(
-		token,
-		'GET',
-		`/repos/${owner}/${repo}/pulls?state=open&head=${encodeURIComponent(`${login}:${branch}`)}`,
-	);
-}
-
-export async function createPull(input: {
-	token: string;
-	owner: string;
-	repo: string;
-	login: string;
-	branch: string;
-	base: string;
-	title: string;
-	body: string;
-}) {
-	const { token, owner, repo, login, branch, base, title, body } = input;
-	return call<PullRequest>(token, 'POST', `/repos/${owner}/${repo}/pulls`, {
-		title,
-		body,
-		head: `${login}:${branch}`,
-		base,
-	});
-}
-
-export async function getPull(token: string, owner: string, repo: string, number: number) {
-	return call<PullRequest>(token, 'GET', `/repos/${owner}/${repo}/pulls/${number}`);
-}
-
-export async function closePull(token: string, owner: string, repo: string, number: number) {
-	await call(token, 'PATCH', `/repos/${owner}/${repo}/pulls/${number}`, { state: 'closed' });
 }
 
 export async function deleteBranch(token: string, owner: string, repo: string, branch: string) {
