@@ -1,9 +1,11 @@
-FROM node:22-bookworm-slim AS build
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:26.13.1-bookworm-slim
+
+FROM ${NODE_IMAGE} AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
 
-RUN corepack enable
+RUN npm install -g pnpm@11.15.0
 
 WORKDIR /app
 
@@ -22,7 +24,7 @@ ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 
 RUN pnpm build
 
-FROM node:22-bookworm-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
@@ -30,7 +32,8 @@ ENV NODE_ENV=production
 ENV PORT=4322
 ENV ASTRO_NODE_AUTOSTART=disabled
 
-RUN corepack enable
+# Node 26 no longer bundles Corepack, so install pnpm explicitly.
+RUN npm install -g pnpm@11.15.0
 
 WORKDIR /app
 

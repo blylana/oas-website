@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: mongo:8
+    image: "${MONGO_IMAGE:-docker.m.daocloud.io/library/mongo:8}"
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME is required}
@@ -20,9 +20,11 @@ services:
       retries: 12
 
   backend:
+    image: oas-website-backend:latest
     build:
       context: .
       args:
+        NODE_IMAGE: "${NODE_IMAGE:-docker.m.daocloud.io/library/node:26.13.1-bookworm-slim}"
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     env_file:

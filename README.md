@@ -103,6 +103,13 @@ cp .env.production.example .env.production
 docker compose --env-file .env.production up -d --build
 ```
 
+镜像默认从 DaoCloud 的 Docker Hub 代理下载，可以在 `.env.production` 中覆盖：
+
+- `NODE_IMAGE`：Node 基础镜像
+- `MONGO_IMAGE`：MongoDB 镜像
+
+海外服务器改成 `node:26.13.1-bookworm-slim`、`mongo:8` 即可。
+
 配置文件会启动两个独立容器：
 
 - `backend`：运行 `server.ts`、Tina API 和 Tina island 刷新接口
