@@ -39,11 +39,14 @@ WORKDIR /app
 
 # server.ts is intentionally run through tsx and imports Tina's TypeScript
 # modules, so the runtime keeps the installed workspace dependencies.
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/tina ./tina
-COPY --from=build /app/server.ts /app/tsconfig.json /app/package.json ./
+COPY --chown=node:node --from=build /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/packages ./packages
+COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/tina ./tina
+COPY --chown=node:node --from=build /app/server.ts /app/tsconfig.json /app/package.json ./
+
+ENV pnpm_config_verify_deps_before_run=false
+RUN chown node:node /app
 
 USER node
 

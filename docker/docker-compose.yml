@@ -22,13 +22,14 @@ services:
   backend:
     image: oas-website-backend:latest
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       args:
         NODE_IMAGE: "${NODE_IMAGE:-docker.m.daocloud.io/library/node:26.13.1-bookworm-slim}"
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     env_file:
-      - .env.production
+      - ../.env.production
     environment:
       NODE_ENV: production
       PORT: 4322
@@ -39,6 +40,28 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:4322:4322"
+
+  frontend:
+    image: oas-website-frontend:latest
+    profiles: ["frontend"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NODE_IMAGE: "${NODE_IMAGE:-docker.m.daocloud.io/library/node:26.13.1-bookworm-slim}"
+        NGINX_IMAGE: "${NGINX_IMAGE:-docker.m.daocloud.io/library/nginx:1.27-alpine}"
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "0.0.0.0:4321:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   mongo_data:

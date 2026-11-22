@@ -91,6 +91,8 @@ GITHUB_BRANCH=tina
 
 ### 2. Docker 后端
 
+Docker 相关文件都在 [docker/](docker/)：`Dockerfile`、`Dockerfile.frontend`、`docker-compose.yml` 和 Nginx 配置。以下命令都在仓库根目录执行。`.dockerignore` 仍在仓库根目录，因为 Docker 构建上下文是仓库根目录。
+
 先创建生产环境文件：
 
 ```bash
@@ -100,36 +102,53 @@ cp .env.production.example .env.production
 填写真实的 Clerk、GitHub 和 MongoDB 配置，然后启动：
 
 ```bash
-docker compose --env-file .env.production up -d --build
+docker compose -f docker/docker-compose.yml --env-file .env.production up -d --build
 ```
 
 镜像默认从 DaoCloud 的 Docker Hub 代理下载，可以在 `.env.production` 中覆盖：
 
 - `NODE_IMAGE`：Node 基础镜像
 - `MONGO_IMAGE`：MongoDB 镜像
+- `NGINX_IMAGE`：前端 Nginx 镜像
 
-海外服务器改成 `node:26.13.1-bookworm-slim`、`mongo:8` 即可。
+海外服务器改成 `node:26.13.1-bookworm-slim`、`mongo:8`、`nginx:1.27-alpine` 即可。
 
-配置文件会启动两个独立容器：
+默认启动两个容器：
 
-- `backend`：运行 `server.ts`、Tina API 和 Tina island 刷新接口
+- `backend`：运行 `server.ts`、Tina API 和 Tina island 刷新接口，同时提供构建好的 `dist/client` 前端页面
 - `mongo`：保存 Tina 索引、草稿、工作区、锁和限流数据
+
+`backend` 镜像在构建阶段已经执行 `pnpm build`，所以即使不启用独立前端容器，访问 `http://127.0.0.1:4322/` 也能看到前端页面，`/api/tina` 也由同一个容器提供。
+
+另外有一个可选的 `frontend` 容器（Compose profile `frontend`），用 Nginx 单独提供静态页面，并把 `/api/tina`、`/tina-island` 反代到 `backend:4322`。需要独立前端入口时再启用。
+
+2GB 内存的服务器建议在本地或 CI 构建镜像，不要在服务器上直接 `up --build`，否则 Astro/Tina 构建容易 OOM：
+
+```bash
+# 本地构建并导出
+docker compose -f docker/docker-compose.yml --env-file .env.production build backend
+docker save oas-website-backend:latest -o oas-backend.tar
+
+# 上传到服务器后导入并启动
+sudo docker load -i oas-backend.tar
+docker compose -f docker/docker-compose.yml --env-file .env.production up -d --no-build --force-recreate backend
+```
 
 MongoDB 数据保存在 `mongo_data` Volume 中，不会随着后端容器重建而丢失。MongoDB 只绑定在 Docker 网络中，后端端口只绑定到服务器本机的 `127.0.0.1:4322`。
 
-服务器上的 Caddy 可以参考 [docker/Caddyfile.example](docker/Caddyfile.example)，把 `api.example.com` 反向代理到 `127.0.0.1:4322`。
+服务器上的 Caddy 可以参考 [docker/Caddyfile.example](docker/Caddyfile.example)，把 `api.example.com` 反向代理到 `127.0.0.1:4322`。不用 Caddy 时，可以用 Cloudflare Tunnel 把 `api.example.com` 指向 `http://127.0.0.1:4322`。
 
 查看状态和日志：
 
 ```bash
-docker compose ps
-docker compose logs -f backend
+docker compose -f docker/docker-compose.yml --env-file .env.production ps
+docker compose -f docker/docker-compose.yml --env-file .env.production logs -f backend
 ```
 
 备份数据库：
 
 ```bash
-docker compose exec -T mongo mongodump \
+docker compose -f docker/docker-compose.yml --env-file .env.production exec -T mongo mongodump \
   --username "$MONGO_ROOT_USERNAME" \
   --password "$MONGO_ROOT_PASSWORD" \
   --authenticationDatabase admin \
@@ -139,7 +158,32 @@ docker compose exec -T mongo mongodump \
 
 `MONGODB_URI` 中的用户名和密码如果包含 URI 保留字符，需要先进行 URL 编码。生产环境不要提交 `.env.production`。
 
-### 3. 发布后的 Tina 索引
+### 3. Docker 前端（可选）
+
+如果要在服务器上单独部署一个前端容器：
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file .env.production --profile frontend build frontend
+docker compose -f docker/docker-compose.yml --env-file .env.production --profile frontend up -d --no-build frontend
+```
+
+访问 `http://<服务器IP>:4321/`。Nginx 会把 `/api/tina/*` 和 `/tina-island/*` 转发到 `backend:4322`，所以后台登录和 API 与前端同源。需要先在阿里云安全组放行 TCP 4321。
+
+本地构建并导出两个镜像：
+
+```bash
+docker compose -f docker/docker-compose.yml --env-file .env.production --profile frontend build backend frontend
+docker save oas-website-backend:latest oas-website-frontend:latest -o oas-images.tar
+```
+
+服务器导入并启动：
+
+```bash
+sudo docker load -i oas-images.tar
+docker compose -f docker/docker-compose.yml --env-file .env.production --profile frontend up -d --no-build
+```
+
+### 4. 发布后的 Tina 索引
 
 文档合并到 GitHub 并完成 Cloudflare Pages 发布后，在包含对应发布版本的工作区执行：
 
